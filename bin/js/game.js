@@ -27,16 +27,21 @@ var GameScene = /** @class */ (function (_super) {
         this.board.placeMines(30);
         // The input event for clicking on the screen
         this.input.on('pointerdown', function (pointer) {
+            // If the board is a state that disables input, end this function
+            if (!this.board.inputEnabled) {
+                return;
+            }
             // Calculate the grid location that was clicked
             var gridPosClick = this.board.toGridPosition(pointer.x, pointer.y);
             // Check if the click happened in the grid
             if (this.board.containsTile(gridPosClick.x, gridPosClick.y)) {
                 // Reveal the tile that was clicked
-                this.board.revealTile(gridPosClick.x, gridPosClick.y);
+                var revealedTile = this.board.revealTile(gridPosClick.x, gridPosClick.y);
             }
         }, this);
     };
-    GameScene.prototype.update = function () {
+    GameScene.prototype.update = function (time, delta) {
+        this.board.update(1000 / 60);
     };
     return GameScene;
 }(Phaser.Scene));
@@ -49,14 +54,28 @@ var config = {
     scene: [GameScene]
 };
 var game = new Phaser.Game(config);
+var BoardStates;
+(function (BoardStates) {
+    BoardStates[BoardStates["Normal"] = 0] = "Normal";
+    BoardStates[BoardStates["AutoRevealing"] = 1] = "AutoRevealing";
+    BoardStates[BoardStates["GameOver"] = 2] = "GameOver";
+})(BoardStates || (BoardStates = {}));
 var Board = /** @class */ (function () {
     function Board(scene, boardPosition, gridWidth, gridHeight) {
+        this.state = BoardStates.Normal;
+        this.autoRevealingSpeed = 132; // Miliseconds
+        this.autoRevealingTimer = 0;
         this.gridSize = new Phaser.Geom.Point(gridWidth, gridHeight);
         this.boardPosition = boardPosition;
         this.createBoard(scene);
     }
     Object.defineProperty(Board.prototype, "totalTiles", {
         get: function () { return this.gridSize.x * this.gridSize.y; },
+        enumerable: true,
+        configurable: true
+    });
+    Object.defineProperty(Board.prototype, "inputEnabled", {
+        get: function () { return this.state == BoardStates.Normal; },
         enumerable: true,
         configurable: true
     });
@@ -92,6 +111,40 @@ var Board = /** @class */ (function () {
                 if (!tile.containsMine) {
                     tile.setHintValue(this.countSurroundingMines(tile));
                 }
+                // Print the board in the console
+                console.log("[0],[1],[2]", x, y, tile.hintValue);
+            }
+        }
+    };
+    Board.prototype.update = function (elapsedMiliseconds) {
+        if (this.state == BoardStates.AutoRevealing) {
+            // Update the auto revealing
+            this.autoRevealingTimer += elapsedMiliseconds;
+            if (this.autoRevealingTimer >= this.autoRevealingSpeed) {
+                this.autoRevealingTimer -= this.autoRevealingSpeed;
+                // Reveal all the tiles that are pending reveal
+                this.tilesToReveal.forEach(function (tile) {
+                    tile.reveal();
+                });
+                // Add new tiles to reveal next
+                var nextTiles = [];
+                for (var i = 0; i < this.tilesToReveal.length; i++) {
+                    if (this.tilesToReveal[i].hintValue == 0) {
+                        // Put all the adjacent tiles in the array
+                        this.getAllAdjacentTiles(this.tilesToReveal[i]).forEach(function (adjacent) {
+                            // Add the tiles that are not revealed yet
+                            if (!adjacent.isRevealed) {
+                                nextTiles.push(adjacent);
+                            }
+                        });
+                        console.log("length: ", nextTiles.length);
+                    }
+                }
+                this.tilesToReveal = nextTiles;
+                // Change the state back to normal when there are no more tiles to reveal
+                if (this.tilesToReveal.length == 0) {
+                    this.changeState(BoardStates.Normal);
+                }
             }
         }
     };
@@ -104,6 +157,11 @@ var Board = /** @class */ (function () {
     Board.prototype.revealTile = function (posX, posY) {
         var revealedTile = this.getTile(posX, posY);
         revealedTile.reveal();
+        // When a tile with hintValue 0 is revealed, it auto reveals the surrounding tiles
+        if (revealedTile.hintValue == 0) {
+            this.tilesToReveal = this.getAllAdjacentTiles(revealedTile);
+            this.changeState(BoardStates.AutoRevealing);
+        }
         return revealedTile;
     };
     Board.prototype.markTile = function (posX, posY) {
@@ -119,14 +177,12 @@ var Board = /** @class */ (function () {
     };
     Board.prototype.countSurroundingMines = function (tile) {
         var mines = 0;
-        console.log("1(x y) = ", tile.gridPosition.x, tile.gridPosition.y);
         for (var y = -1; y <= 1; y++) {
             for (var x = -1; x <= 1; x++) {
                 // There is no need to check itself for a mine
                 if (x == 0 && y == 0) {
                     continue;
                 }
-                console.log("2(x y) = ", x, y);
                 // Count the mine of the adjacent tile
                 var adjacentTile = this.getAdjacentTile(tile, x, y);
                 if (adjacentTile != undefined && adjacentTile.containsMine) {
@@ -141,8 +197,8 @@ var Board = /** @class */ (function () {
     };
     Board.prototype.getAllAdjacentTiles = function (tile) {
         var adjacentTiles = [];
-        for (var y = -1; y < 1; y++) {
-            for (var x = -1; x < 1; x++) {
+        for (var y = -1; y <= 1; y++) {
+            for (var x = -1; x <= 1; x++) {
                 // There is no need to return itself
                 if (x == 0 && y == 0) {
                     continue;
@@ -155,6 +211,9 @@ var Board = /** @class */ (function () {
             }
         }
         return adjacentTiles;
+    };
+    Board.prototype.changeState = function (newState) {
+        this.state = newState;
     };
     // Converts a screen position to a location in the grid
     Board.prototype.toGridPosition = function (screenPosX, screenPosY) {
@@ -210,7 +269,6 @@ var Tile = /** @class */ (function () {
             numberSprite.setOrigin(0, 0);
             numberSprite.setPosition(this.gridPosition.x * CELL_SIZE, this.gridPosition.y * CELL_SIZE);
         }
-        console.log("hintValue[{0},{1}] = {2}", this.gridPosition.x, this.gridPosition.y, this.hintValue);
     };
     Tile.prototype.setHintValue = function (value) {
         this.hintValue = value;
