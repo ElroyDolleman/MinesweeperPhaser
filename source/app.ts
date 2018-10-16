@@ -1,4 +1,4 @@
-const CELL_SIZE: number = 44; 
+const CELL_SIZE: number = 44;
 
 class GameScene extends Phaser.Scene
 {
@@ -24,6 +24,12 @@ class GameScene extends Phaser.Scene
         // The input event for clicking on the screen
         this.input.on('pointerdown', function (pointer) 
         {
+            // If the board is a state that disables input, end this function
+            if (!this.board.inputEnabled)
+            {
+                return;
+            }
+
             // Calculate the grid location that was clicked
             var gridPosClick = this.board.toGridPosition(pointer.x, pointer.y);
 
@@ -31,15 +37,15 @@ class GameScene extends Phaser.Scene
             if (this.board.containsTile(gridPosClick.x, gridPosClick.y))
             {
                 // Reveal the tile that was clicked
-                this.board.revealTile(gridPosClick.x, gridPosClick.y);
+                var revealedTile = this.board.revealTile(gridPosClick.x, gridPosClick.y);
             }
             
         }, this);
     }
 
-    update()
+    update(time, delta)
     {
-
+        this.board.update(1000 / 60);
     }
 }
 

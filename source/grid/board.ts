@@ -1,11 +1,25 @@
+enum BoardStates
+{
+    Normal,
+    AutoRevealing,
+    GameOver,
+}
+
 class Board
 {
+    state: BoardStates = BoardStates.Normal;
+
+    autoRevealingSpeed: number = 132; // Miliseconds
+    autoRevealingTimer: number = 0;
+
     boardPosition: Phaser.Geom.Point;  // The position of the board
     gridSize: Phaser.Geom.Point;  // The widht and height of the grid
     tiles: Array<Array<Tile>>;    // The tiles stored in a 2D array
+    tilesToReveal: Array<Tile>;
 
     get totalTiles(): number { return this.gridSize.x * this.gridSize.y; }
 
+    get inputEnabled(): boolean { return this.state == BoardStates.Normal; }
 
     constructor(scene: Phaser.Scene, boardPosition: Phaser.Geom.Point, gridWidth: number, gridHeight: number)
     {
@@ -68,6 +82,53 @@ class Board
                 {
                     tile.setHintValue(this.countSurroundingMines(tile));
                 }
+
+                // Print the board in the console
+                console.log("[0],[1],[2]", x, y, tile.hintValue);
+            }
+        }
+    }
+
+    update(elapsedMiliseconds: number)
+    {
+        if (this.state == BoardStates.AutoRevealing)
+        {
+            // Update the auto revealing
+            this.autoRevealingTimer += elapsedMiliseconds;
+            if (this.autoRevealingTimer >= this.autoRevealingSpeed)
+            {
+                this.autoRevealingTimer -= this.autoRevealingSpeed;
+
+                // Reveal all the tiles that are pending reveal
+                this.tilesToReveal.forEach(tile => {
+                    tile.reveal();
+                });
+
+                // Add new tiles to reveal next
+                var nextTiles = [];
+                for(var i = 0; i < this.tilesToReveal.length; i++)
+                {
+                    if (this.tilesToReveal[i].hintValue == 0)
+                    {
+                        // Put all the adjacent tiles in the array
+                        this.getAllAdjacentTiles(this.tilesToReveal[i]).forEach(adjacent => {
+                            
+                            // Add the tiles that are not revealed yet
+                            if (!adjacent.isRevealed)
+                            {
+                                nextTiles.push(adjacent);
+                            }
+                        });
+                        console.log("length: ", nextTiles.length);
+                    }
+                }
+                this.tilesToReveal = nextTiles;
+
+                // Change the state back to normal when there are no more tiles to reveal
+                if (this.tilesToReveal.length == 0)
+                {
+                    this.changeState(BoardStates.Normal);
+                }
             }
         }
     }
@@ -84,6 +145,13 @@ class Board
     {
         var revealedTile = this.getTile(posX, posY);
         revealedTile.reveal();
+
+        // When a tile with hintValue 0 is revealed, it auto reveals the surrounding tiles
+        if (revealedTile.hintValue == 0)
+        {
+            this.tilesToReveal = this.getAllAdjacentTiles(revealedTile);
+            this.changeState(BoardStates.AutoRevealing);            
+        }
 
         return revealedTile;
     }
@@ -139,9 +207,9 @@ class Board
     {
         var adjacentTiles = [];
 
-        for (var y = -1; y < 1; y++)
+        for (var y = -1; y <= 1; y++)
         {
-            for (var x = -1; x < 1; x++)
+            for (var x = -1; x <= 1; x++)
             {
                 // There is no need to return itself
                 if (x == 0 && y == 0) {
@@ -158,6 +226,11 @@ class Board
         }
 
         return adjacentTiles;
+    }
+
+    changeState(newState: BoardStates)
+    {
+        this.state = newState;
     }
 
     // Converts a screen position to a location in the grid
