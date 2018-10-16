@@ -19,6 +19,7 @@ class GameScene extends Phaser.Scene
     {
         // Create the board/grid
         this.board = new Board(this, new Phaser.Geom.Point(0, 0), 10, 10);
+        this.board.placeMines(30);
 
         // The input event for clicking on the screen
         this.input.on('pointerdown', function (pointer) 
@@ -38,7 +39,7 @@ class GameScene extends Phaser.Scene
 
     update()
     {
-        
+
     }
 }
 
