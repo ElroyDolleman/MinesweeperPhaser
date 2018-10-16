@@ -24,6 +24,7 @@ var GameScene = /** @class */ (function (_super) {
     GameScene.prototype.create = function () {
         // Create the board/grid
         this.board = new Board(this, new Phaser.Geom.Point(0, 0), 10, 10);
+        this.board.placeMines(30);
         // The input event for clicking on the screen
         this.input.on('pointerdown', function (pointer) {
             // Calculate the grid location that was clicked
@@ -70,6 +71,30 @@ var Board = /** @class */ (function () {
             }
         }
     };
+    Board.prototype.placeMines = function (amount) {
+        var mines = 0;
+        while (mines < amount) {
+            // Randomly select a tile
+            var tile = this.getTile(Phaser.Math.RND.integerInRange(0, this.gridSize.x - 1), Phaser.Math.RND.integerInRange(0, this.gridSize.y - 1));
+            // Plant a mine on the selected tile
+            if (!tile.containsMine) {
+                tile.setMine();
+                mines++;
+            }
+        }
+        this.calculateNumberHints();
+    };
+    Board.prototype.calculateNumberHints = function () {
+        for (var y = 0; y < this.gridSize.y; y++) {
+            for (var x = 0; x < this.gridSize.x; x++) {
+                var tile = this.getTile(x, y);
+                // Set the hint value to the amount of surrounding mines if the tile is not a mine itself
+                if (!tile.containsMine) {
+                    tile.setHintValue(this.countSurroundingMines(tile));
+                }
+            }
+        }
+    };
     Board.prototype.containsTile = function (posX, posY) {
         return posX >= 0 &&
             posY >= 0 &&
@@ -86,18 +111,25 @@ var Board = /** @class */ (function () {
         markedTile.mark();
     };
     Board.prototype.getTile = function (posX, posY) {
+        if (!this.containsTile(posX, posY)) {
+            // If the position is outside of the grid return undefined
+            return undefined;
+        }
         return this.tiles[posY][posX];
     };
     Board.prototype.countSurroundingMines = function (tile) {
         var mines = 0;
-        for (var y = -1; y < 1; y++) {
-            for (var x = -1; x < 1; x++) {
+        console.log("1(x y) = ", tile.gridPosition.x, tile.gridPosition.y);
+        for (var y = -1; y <= 1; y++) {
+            for (var x = -1; x <= 1; x++) {
                 // There is no need to check itself for a mine
                 if (x == 0 && y == 0) {
                     continue;
                 }
+                console.log("2(x y) = ", x, y);
                 // Count the mine of the adjacent tile
-                if (this.getAdjacentTile(tile, x, y).containsMine) {
+                var adjacentTile = this.getAdjacentTile(tile, x, y);
+                if (adjacentTile != undefined && adjacentTile.containsMine) {
                     mines++;
                 }
             }
@@ -105,7 +137,7 @@ var Board = /** @class */ (function () {
         return mines;
     };
     Board.prototype.getAdjacentTile = function (tile, nextX, nextY) {
-        return this.getTile(tile.gridPosition.y + nextY, tile.gridPosition.x + nextX);
+        return this.getTile(tile.gridPosition.x + nextX, tile.gridPosition.y + nextY);
     };
     Board.prototype.getAllAdjacentTiles = function (tile) {
         var adjacentTiles = [];
@@ -115,7 +147,11 @@ var Board = /** @class */ (function () {
                 if (x == 0 && y == 0) {
                     continue;
                 }
-                adjacentTiles.push(this.getAdjacentTile(tile, x, y));
+                // Add the adjacent tile to the list if it's not undefined
+                var adjacent = this.getAdjacentTile(tile, x, y);
+                if (adjacent != undefined) {
+                    adjacentTiles.push(adjacent);
+                }
             }
         }
         return adjacentTiles;
@@ -131,12 +167,15 @@ var TileFrames;
     TileFrames[TileFrames["Hidden"] = 10] = "Hidden";
     TileFrames[TileFrames["Revealed"] = 11] = "Revealed";
     TileFrames[TileFrames["Mistake"] = 12] = "Mistake";
+    TileFrames[TileFrames["Mine"] = 20] = "Mine";
+    TileFrames[TileFrames["Flag"] = 21] = "Flag";
 })(TileFrames || (TileFrames = {}));
 var Tile = /** @class */ (function () {
     function Tile(scene, gridPosX, gridPosY) {
-        this.value = 0;
+        this.hintValue = 0;
         this.isRevealed = false;
         this.isMarked = false;
+        this.scene = scene;
         // Create new sprite based on the spritesheet
         this.sprite = scene.add.sprite(0, 0, 'minesweeper_sheet');
         this.sprite.setOrigin(0, 0);
@@ -147,16 +186,34 @@ var Tile = /** @class */ (function () {
         this.gridPosition = new Phaser.Geom.Point(gridPosX, gridPosY);
     }
     Object.defineProperty(Tile.prototype, "containsMine", {
-        get: function () { return this.value == -1; },
+        get: function () { return this.hintValue == -1; },
         enumerable: true,
         configurable: true
     });
     Tile.prototype.setMine = function () {
-        this.value = -1;
+        this.hintValue = -1;
     };
     Tile.prototype.reveal = function () {
         this.isRevealed = true;
         this.sprite.setFrame(TileFrames.Revealed);
+        if (this.containsMine) {
+            this.sprite.setFrame(TileFrames.Mistake);
+            // Show the mine sprite
+            var mineSprite = this.scene.add.sprite(0, 0, 'minesweeper_sheet');
+            mineSprite.setFrame(TileFrames.Mine);
+            mineSprite.setOrigin(0, 0);
+            mineSprite.setPosition(this.gridPosition.x * CELL_SIZE, this.gridPosition.y * CELL_SIZE);
+        }
+        else if (this.hintValue > 0) {
+            var numberSprite = this.scene.add.sprite(0, 0, 'minesweeper_sheet');
+            numberSprite.setFrame(this.hintValue - 1);
+            numberSprite.setOrigin(0, 0);
+            numberSprite.setPosition(this.gridPosition.x * CELL_SIZE, this.gridPosition.y * CELL_SIZE);
+        }
+        console.log("hintValue[{0},{1}] = {2}", this.gridPosition.x, this.gridPosition.y, this.hintValue);
+    };
+    Tile.prototype.setHintValue = function (value) {
+        this.hintValue = value;
     };
     Tile.prototype.mark = function () {
         this.isMarked = true;
