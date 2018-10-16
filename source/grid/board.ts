@@ -32,6 +32,46 @@ class Board
         }
     }
 
+    placeMines(amount: number)
+    {
+        var mines = 0;
+
+        while(mines < amount)
+        {
+            // Randomly select a tile
+            var tile = this.getTile(
+                Phaser.Math.RND.integerInRange(0, this.gridSize.x - 1),
+                Phaser.Math.RND.integerInRange(0, this.gridSize.y - 1)
+            );
+
+            // Plant a mine on the selected tile
+            if (!tile.containsMine)
+            {
+                tile.setMine();
+                mines++;
+            }
+        }
+
+        this.calculateNumberHints();
+    }
+
+    calculateNumberHints()
+    {
+        for (var y = 0; y < this.gridSize.y; y++)
+        {
+            for (var x = 0; x < this.gridSize.x; x++)
+            {
+                var tile = this.getTile(x, y);
+
+                // Set the hint value to the amount of surrounding mines if the tile is not a mine itself
+                if (!tile.containsMine)
+                {
+                    tile.setHintValue(this.countSurroundingMines(tile));
+                }
+            }
+        }
+    }
+
     containsTile(posX: number, posY: number): boolean
     {
         return posX >= 0 &&
@@ -56,6 +96,12 @@ class Board
 
     getTile(posX: number, posY: number): Tile
     {
+        if (!this.containsTile(posX, posY))
+        {
+            // If the position is outside of the grid return undefined
+            return undefined;
+        }
+
         return this.tiles[posY][posX];
     }
 
@@ -63,16 +109,19 @@ class Board
     {
         var mines = 0;
 
-        for (var y = -1; y < 1; y++)
+        for (var y = -1; y <= 1; y++)
         {
-            for (var x = -1; x < 1; x++)
+            for (var x = -1; x <= 1; x++)
             {
                 // There is no need to check itself for a mine
                 if (x == 0 && y == 0) {
                     continue;
                 }
+
                 // Count the mine of the adjacent tile
-                if (this.getAdjacentTile(tile, x, y).containsMine) {
+                var adjacentTile = this.getAdjacentTile(tile, x, y);
+                if (adjacentTile != undefined && adjacentTile.containsMine) 
+                {
                     mines++;
                 }
             }
@@ -83,7 +132,7 @@ class Board
 
     getAdjacentTile(tile: Tile, nextX: number, nextY: number): Tile
     {
-        return this.getTile(tile.gridPosition.y + nextY, tile.gridPosition.x + nextX);
+        return this.getTile(tile.gridPosition.x + nextX, tile.gridPosition.y + nextY);
     }
 
     getAllAdjacentTiles(tile: Tile): Array<Tile>
@@ -98,7 +147,13 @@ class Board
                 if (x == 0 && y == 0) {
                     continue;
                 }
-                adjacentTiles.push(this.getAdjacentTile(tile, x, y));
+
+                // Add the adjacent tile to the list if it's not undefined
+                var adjacent = this.getAdjacentTile(tile, x, y);
+                if (adjacent != undefined) 
+                {
+                    adjacentTiles.push(adjacent);
+                }
             }
         }
 
