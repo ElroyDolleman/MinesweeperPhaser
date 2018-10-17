@@ -14,14 +14,22 @@ var __extends = (this && this.__extends) || (function () {
 var CELL_SIZE = 52;
 var SCREEN_WIDTH = 480;
 var SCREEN_HEIGHT = 800;
+var TIMER_FONT_WIDTH = 50;
+var TIMER_FONT_HEIGHT = 90;
+var MAX_TIME = 999;
 var GameScene = /** @class */ (function (_super) {
     __extends(GameScene, _super);
     function GameScene() {
-        return _super.call(this, { key: 'GameScene', active: true }) || this;
+        var _this = _super.call(this, { key: 'GameScene', active: true }) || this;
+        _this.timer = 0;
+        _this.secondsPassed = 0;
+        _this.timerIsRunning = false;
+        return _this;
     }
     GameScene.prototype.preload = function () {
         // Load the spritesheet that contains all images
         this.load.spritesheet('minesweeper_sheet', 'assets/minesweeper_sheet.png', { frameWidth: CELL_SIZE, frameHeight: CELL_SIZE });
+        this.load.spritesheet('timer_font_sheet', 'assets/timer_font_sheet.png', { frameWidth: TIMER_FONT_WIDTH, frameHeight: TIMER_FONT_HEIGHT });
     };
     GameScene.prototype.create = function () {
         game.input.mouse.capture = true;
@@ -30,6 +38,9 @@ var GameScene = /** @class */ (function (_super) {
         this.board.setBoardPosition(SCREEN_WIDTH / 2 - this.board.boardWidth / 2, SCREEN_HEIGHT / 2 - this.board.boardHeight / 2);
         this.board.createBoard(this);
         this.board.placeMines(10);
+        // Make the UI as width as the board and place it above the board
+        this.ui = new UI(this, this.board.boardPosition.x, this.board.boardPosition.x, this.board.boardWidth);
+        this.ui.updateMinesAmount(this.board.minesAmount);
         // The input event for clicking on the screen
         this.input.on('pointerdown', function (pointer) {
             // If the board is a state that disables input, end this function
@@ -38,17 +49,22 @@ var GameScene = /** @class */ (function (_super) {
             }
             // Calculate the grid location that was clicked
             var gridPosClick = this.board.toGridPosition(pointer.x, pointer.y);
+            // If the click was not on the board, cancle the function
+            if (!this.board.containsTile(gridPosClick.x, gridPosClick.y)) {
+                return;
+            }
+            // Start the timer if it has not started yet
+            if (!this.timerIsRunning)
+                this.timerIsRunning = true;
             // If the right button is down, mark the tile instead of revealing it
             if (pointer.rightButtonDown()) {
                 // Mark the tile that the player clicks on (will automatically unmark if it's marked already)
-                if (this.board.containsTile(gridPosClick.x, gridPosClick.y)) {
-                    this.board.markTile(gridPosClick.x, gridPosClick.y);
-                }
-                // Quit the function to prevent revealing the tile
-                return;
+                this.board.markTile(gridPosClick.x, gridPosClick.y);
+                // Update the amount of mines depending how many tiles are marked
+                this.ui.updateMinesAmount(this.board.minesAmount - this.board.markedAmount);
             }
-            // Check if the click happened in the grid
-            if (this.board.containsTile(gridPosClick.x, gridPosClick.y)) {
+            // If the left button is down, reveal the tile
+            else {
                 // Reveal the tile that was clicked
                 var revealedTile = this.board.revealTile(gridPosClick.x, gridPosClick.y);
                 // When the revealed tile has a mine, it's game over
@@ -57,12 +73,24 @@ var GameScene = /** @class */ (function (_super) {
                     this.board.showAllMines();
                     // Tell the board that it's game over
                     this.board.changeState(BoardStates.GameOver);
+                    // Stop the timer
+                    this.timerIsRunning = false;
                 }
             }
         }, this);
     };
-    GameScene.prototype.update = function (time, delta) {
-        this.board.update(1000 / 60);
+    GameScene.prototype.update = function () {
+        // Fixed timestep
+        var elapsedMiliseconds = 1000 / 60;
+        // Update the board (for autorevealing)
+        this.board.update(elapsedMiliseconds);
+        if (this.timerIsRunning && this.secondsPassed < MAX_TIME) {
+            // When the next second has passed, update it in the UI
+            this.timer += elapsedMiliseconds;
+            if (this.timer > (this.secondsPassed + 1) * 1000) {
+                this.ui.updateTime(this.secondsPassed++);
+            }
+        }
     };
     return GameScene;
 }(Phaser.Scene));
@@ -76,6 +104,68 @@ var config = {
     scene: [GameScene]
 };
 var game = new Phaser.Game(config);
+var DIGIT_AMOUNT = 3;
+var MINUS_SIGN_FRAME = 11;
+var UI = /** @class */ (function () {
+    function UI(scene, posX, posY, width) {
+        this.position = new Phaser.Geom.Point(posX, posY);
+        // Place the mines counter on the left
+        this.minesDigitsSprites = this.createSpriteDigits(scene, this.position);
+        this.updateMinesAmount(0);
+        // Place the timer on the right
+        var rightPos = new Phaser.Geom.Point(posX + width - TIMER_FONT_WIDTH * DIGIT_AMOUNT, posY);
+        this.timeDigitsSprites = this.createSpriteDigits(scene, rightPos);
+        this.updateTime(0);
+    }
+    // Creates an array of sprites as digits
+    UI.prototype.createSpriteDigits = function (scene, pos, digitAmoount) {
+        if (digitAmoount === void 0) { digitAmoount = DIGIT_AMOUNT; }
+        var digitSprites = [];
+        // Add each digit as a sprite from right to left
+        for (var i = digitAmoount - 1; i >= 0; i--) {
+            var len = digitSprites.push(scene.add.sprite(pos.x + i * TIMER_FONT_WIDTH, pos.y, 'timer_font_sheet'));
+            digitSprites[len - 1].setOrigin(0, 0);
+        }
+        return digitSprites;
+    };
+    UI.prototype.updateMinesAmount = function (marks) {
+        this.updateSpriteDigits(this.minesDigitsSprites, marks);
+    };
+    UI.prototype.updateTime = function (time) {
+        this.updateSpriteDigits(this.timeDigitsSprites, time);
+    };
+    // Update the digit sprites so that it matches a number
+    UI.prototype.updateSpriteDigits = function (digitSprites, num) {
+        // Check if it's a minus number and calculate where the minus sign should be placed
+        var minusSign = -1;
+        if (num < 0) {
+            minusSign = num.toString().length - 1;
+            num *= -1;
+        }
+        // Keep track of the highest digit
+        var highestDigit = 0;
+        for (var i = digitSprites.length - 1; i >= 0; i--) {
+            // Ignore the calculation if a minus sign needs to be placed
+            if (i == minusSign) {
+                digitSprites[i].setFrame(MINUS_SIGN_FRAME);
+                continue;
+            }
+            // Calculate the current digit
+            var powOfTen = Math.pow(10, i);
+            var digit = Math.floor(num / powOfTen);
+            // Show the 'off' digit instead of a 0 when the number doesn't have enough digits (so that 99 doesn't show as 099)
+            var frame = digit == 0 && highestDigit == 0 && i != 0 ? 0 : digit + 1;
+            // Show the correct digit
+            digitSprites[i].setFrame(frame);
+            // Remove the digit from the number so it won't mess up the calculation
+            num -= digit * powOfTen;
+            // Update the highest digit
+            if (digit > highestDigit)
+                highestDigit = digit;
+        }
+    };
+    return UI;
+}());
 var BoardStates;
 (function (BoardStates) {
     BoardStates[BoardStates["Normal"] = 0] = "Normal";
@@ -87,6 +177,7 @@ var Board = /** @class */ (function () {
         this.state = BoardStates.Normal;
         this.autoRevealingSpeed = 132; // Miliseconds
         this.autoRevealingTimer = 0;
+        this.markedAmount = 0;
         this.gridSize = new Phaser.Geom.Point(gridWidth, gridHeight);
     }
     Object.defineProperty(Board.prototype, "totalTiles", {
@@ -138,6 +229,7 @@ var Board = /** @class */ (function () {
             }
         }
         this.calculateNumberHints();
+        this.minesAmount = mines;
     };
     Board.prototype.calculateNumberHints = function () {
         for (var y = 0; y < this.gridSize.y; y++) {
@@ -148,7 +240,7 @@ var Board = /** @class */ (function () {
                     tile.setHintValue(this.countSurroundingMines(tile));
                 }
                 // Print the board in the console
-                //console.log("", x, y, tile.hintValue);
+                console.log("", x, y, tile.hintValue);
             }
         }
     };
@@ -160,7 +252,8 @@ var Board = /** @class */ (function () {
                 this.autoRevealingTimer -= this.autoRevealingSpeed;
                 // Reveal all the tiles that are pending reveal
                 this.tilesToReveal.forEach(function (tile) {
-                    tile.reveal();
+                    if (!tile.isMarked)
+                        tile.reveal();
                 });
                 // Add new tiles to reveal next
                 var nextTiles = [];
@@ -169,7 +262,7 @@ var Board = /** @class */ (function () {
                         // Put all the adjacent tiles in the array
                         this.getAllAdjacentTiles(this.tilesToReveal[i]).forEach(function (adjacent) {
                             // Add the tiles that are not revealed yet
-                            if (!adjacent.isRevealed) {
+                            if (!adjacent.isRevealed && !adjacent.isMarked) {
                                 nextTiles.push(adjacent);
                             }
                         });
@@ -208,10 +301,12 @@ var Board = /** @class */ (function () {
         // Unmark the tile if it's marked already
         if (markedTile.isMarked) {
             markedTile.unMark();
+            this.markedAmount--;
         }
         // Only mark the tile if it's not revealed yet
         else if (!markedTile.isRevealed) {
             markedTile.mark();
+            this.markedAmount++;
         }
     };
     Board.prototype.getTile = function (posX, posY) {
@@ -285,11 +380,11 @@ var Board = /** @class */ (function () {
 }());
 var TileFrames;
 (function (TileFrames) {
-    TileFrames[TileFrames["Hidden"] = 9] = "Hidden";
-    TileFrames[TileFrames["Revealed"] = 10] = "Revealed";
-    TileFrames[TileFrames["Mistake"] = 11] = "Mistake";
-    TileFrames[TileFrames["Mine"] = 20] = "Mine";
-    TileFrames[TileFrames["Flag"] = 18] = "Flag";
+    TileFrames[TileFrames["Hidden"] = 10] = "Hidden";
+    TileFrames[TileFrames["Revealed"] = 11] = "Revealed";
+    TileFrames[TileFrames["Mistake"] = 12] = "Mistake";
+    TileFrames[TileFrames["Mine"] = 22] = "Mine";
+    TileFrames[TileFrames["Flag"] = 20] = "Flag";
 })(TileFrames || (TileFrames = {}));
 var Tile = /** @class */ (function () {
     function Tile(scene, position) {
