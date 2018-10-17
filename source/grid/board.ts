@@ -17,6 +17,9 @@ class Board
     tiles: Array<Array<Tile>>;    // The tiles stored in a 2D array
     tilesToReveal: Array<Tile>;
 
+    minesAmount: number;
+    markedAmount: number = 0;
+
     // The total amount of tiles
     get totalTiles(): number { return this.gridSize.x * this.gridSize.y; }
     // Whether input can make changes to the board or not
@@ -73,6 +76,7 @@ class Board
         }
 
         this.calculateNumberHints();
+        this.minesAmount = mines;
     }
 
     calculateNumberHints()
@@ -107,7 +111,7 @@ class Board
 
                 // Reveal all the tiles that are pending reveal
                 this.tilesToReveal.forEach(tile => {
-                    tile.reveal();
+                    if (!tile.isMarked) tile.reveal();
                 });
 
                 // Add new tiles to reveal next
@@ -120,7 +124,7 @@ class Board
                         this.getAllAdjacentTiles(this.tilesToReveal[i]).forEach(adjacent => {
                             
                             // Add the tiles that are not revealed yet
-                            if (!adjacent.isRevealed)
+                            if (!adjacent.isRevealed && !adjacent.isMarked)
                             {
                                 nextTiles.push(adjacent);
                             }
@@ -176,12 +180,14 @@ class Board
         if (markedTile.isMarked)
         {
             markedTile.unMark();
+            this.markedAmount--;
         }
 
         // Only mark the tile if it's not revealed yet
         else if (!markedTile.isRevealed)
         {
             markedTile.mark();
+            this.markedAmount++
         }
     }
 

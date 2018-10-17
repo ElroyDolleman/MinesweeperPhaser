@@ -1,10 +1,10 @@
 enum TileFrames
 {
-    Hidden = 9,
-    Revealed = 10,
-    Mistake = 11,
-    Mine = 20,
-    Flag = 18
+    Hidden = 10,
+    Revealed = 11,
+    Mistake = 12,
+    Mine = 22,
+    Flag = 20
 }
 
 class Tile
