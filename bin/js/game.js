@@ -22,9 +22,10 @@ var GameScene = /** @class */ (function (_super) {
         this.load.spritesheet('minesweeper_sheet', 'assets/minesweeper_sheet.png', { frameWidth: CELL_SIZE, frameHeight: CELL_SIZE });
     };
     GameScene.prototype.create = function () {
+        game.input.mouse.capture = true;
         // Create the board/grid
         this.board = new Board(this, new Phaser.Geom.Point(0, 0), 10, 10);
-        this.board.placeMines(30);
+        this.board.placeMines(12);
         // The input event for clicking on the screen
         this.input.on('pointerdown', function (pointer) {
             // If the board is a state that disables input, end this function
@@ -33,10 +34,26 @@ var GameScene = /** @class */ (function (_super) {
             }
             // Calculate the grid location that was clicked
             var gridPosClick = this.board.toGridPosition(pointer.x, pointer.y);
+            // If the right button is down, mark the tile instead of revealing it
+            if (pointer.rightButtonDown()) {
+                // Mark the tile that the player clicks on (will automatically unmark if it's marked already)
+                if (this.board.containsTile(gridPosClick.x, gridPosClick.y)) {
+                    this.board.markTile(gridPosClick.x, gridPosClick.y);
+                }
+                // Quit the function to prevent revealing the tile
+                return;
+            }
             // Check if the click happened in the grid
             if (this.board.containsTile(gridPosClick.x, gridPosClick.y)) {
                 // Reveal the tile that was clicked
                 var revealedTile = this.board.revealTile(gridPosClick.x, gridPosClick.y);
+                // When the revealed tile has a mine, it's game over
+                if (!revealedTile.isMarked && revealedTile.containsMine) {
+                    // Show the player where all the mines are
+                    this.board.showAllMines();
+                    // Tell the board that it's game over
+                    this.board.changeState(BoardStates.GameOver);
+                }
             }
         }, this);
     };
@@ -51,6 +68,7 @@ var config = {
     height: 800,
     backgroundColor: '#ffffff',
     parent: 'minesweeper',
+    disableContextMenu: true,
     scene: [GameScene]
 };
 var game = new Phaser.Game(config);
@@ -156,6 +174,10 @@ var Board = /** @class */ (function () {
     };
     Board.prototype.revealTile = function (posX, posY) {
         var revealedTile = this.getTile(posX, posY);
+        // Stop the function if the tile is marked
+        if (revealedTile.isMarked) {
+            return revealedTile;
+        }
         revealedTile.reveal();
         // When a tile with hintValue 0 is revealed, it auto reveals the surrounding tiles
         if (revealedTile.hintValue == 0) {
@@ -166,7 +188,14 @@ var Board = /** @class */ (function () {
     };
     Board.prototype.markTile = function (posX, posY) {
         var markedTile = this.tiles[posY][posX];
-        markedTile.mark();
+        // Unmark the tile if it's marked already
+        if (markedTile.isMarked) {
+            markedTile.unMark();
+        }
+        // Only mark the tile if it's not revealed yet
+        else if (!markedTile.isRevealed) {
+            markedTile.mark();
+        }
     };
     Board.prototype.getTile = function (posX, posY) {
         if (!this.containsTile(posX, posY)) {
@@ -212,6 +241,17 @@ var Board = /** @class */ (function () {
         }
         return adjacentTiles;
     };
+    Board.prototype.showAllMines = function () {
+        for (var y = 0; y < this.gridSize.y; y++) {
+            for (var x = 0; x < this.gridSize.x; x++) {
+                var tile = this.getTile(x, y);
+                // Reveal every tile that has a mine and is not revealed yet
+                if (!tile.isRevealed && tile.containsMine) {
+                    tile.reveal(false);
+                }
+            }
+        }
+    };
     Board.prototype.changeState = function (newState) {
         this.state = newState;
     };
@@ -252,11 +292,15 @@ var Tile = /** @class */ (function () {
     Tile.prototype.setMine = function () {
         this.hintValue = -1;
     };
-    Tile.prototype.reveal = function () {
+    Tile.prototype.reveal = function (showPlayerMistake) {
+        if (showPlayerMistake === void 0) { showPlayerMistake = true; }
         this.isRevealed = true;
         this.sprite.setFrame(TileFrames.Revealed);
         if (this.containsMine) {
-            this.sprite.setFrame(TileFrames.Mistake);
+            // Show the player that they made a mistake by making the tile red
+            if (showPlayerMistake) {
+                this.sprite.setFrame(TileFrames.Mistake);
+            }
             // Show the mine sprite
             var mineSprite = this.scene.add.sprite(0, 0, 'minesweeper_sheet');
             mineSprite.setFrame(TileFrames.Mine);
@@ -275,6 +319,22 @@ var Tile = /** @class */ (function () {
     };
     Tile.prototype.mark = function () {
         this.isMarked = true;
+        // Create the mark sprite if it doesn't exists yet
+        if (this.markSprite == undefined) {
+            this.createMarkSprite();
+            return;
+        }
+        this.markSprite.visible = true;
+    };
+    Tile.prototype.unMark = function () {
+        this.isMarked = false;
+        this.markSprite.visible = false;
+    };
+    Tile.prototype.createMarkSprite = function () {
+        this.markSprite = this.scene.add.sprite(0, 0, 'minesweeper_sheet');
+        this.markSprite.setFrame(TileFrames.Flag);
+        this.markSprite.setOrigin(0, 0);
+        this.markSprite.setPosition(this.gridPosition.x * CELL_SIZE, this.gridPosition.y * CELL_SIZE);
     };
     return Tile;
 }());
