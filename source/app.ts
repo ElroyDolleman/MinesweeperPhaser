@@ -1,4 +1,6 @@
-const CELL_SIZE: number = 44;
+const CELL_SIZE: number = 52;
+const SCREEN_WIDTH: number = 480;
+const SCREEN_HEIGHT: number = 800;
 
 class GameScene extends Phaser.Scene
 {
@@ -20,8 +22,10 @@ class GameScene extends Phaser.Scene
         game.input.mouse.capture = true;
 
         // Create the board/grid
-        this.board = new Board(this, new Phaser.Geom.Point(0, 0), 10, 10);
-        this.board.placeMines(12);
+        this.board = new Board(this, 9, 9);
+        this.board.setBoardPosition(SCREEN_WIDTH / 2 - this.board.boardWidth / 2, SCREEN_HEIGHT / 2 - this.board.boardHeight / 2);
+        this.board.createBoard(this);
+        this.board.placeMines(10);
 
         // The input event for clicking on the screen
         this.input.on('pointerdown', function (pointer) 
@@ -75,9 +79,9 @@ class GameScene extends Phaser.Scene
 
 var config = {
     type: Phaser.AUTO,
-    width: 480,
-    height: 800,
-    backgroundColor: '#ffffff',
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
+    backgroundColor: '#e9f4fc',
     parent: 'minesweeper',
     disableContextMenu: true,
     scene: [ GameScene ]

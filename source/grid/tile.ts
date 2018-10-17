@@ -1,10 +1,10 @@
 enum TileFrames
 {
-    Hidden = 10,
-    Revealed = 11,
-    Mistake = 12,
+    Hidden = 9,
+    Revealed = 10,
+    Mistake = 11,
     Mine = 20,
-    Flag = 21
+    Flag = 18
 }
 
 class Tile
@@ -13,7 +13,7 @@ class Tile
 
     markSprite: Phaser.GameObjects.Sprite;
     sprite: Phaser.GameObjects.Sprite;
-    gridPosition: Phaser.Geom.Point;
+    position: Phaser.Geom.Point;
 
     hintValue: number = 0;
     isRevealed: boolean = false;
@@ -21,7 +21,7 @@ class Tile
 
     get containsMine(): boolean { return this.hintValue == -1; }
 
-    constructor(scene: Phaser.Scene, gridPosX: number, gridPosY: number)
+    constructor(scene: Phaser.Scene, position: Phaser.Geom.Point)
     {
         this.scene = scene;
 
@@ -33,8 +33,8 @@ class Tile
         this.sprite.setFrame(TileFrames.Hidden);
 
         // Set the position based on the grid location
-        this.sprite.setPosition(gridPosX * CELL_SIZE, gridPosY * CELL_SIZE);
-        this.gridPosition = new Phaser.Geom.Point(gridPosX, gridPosY);
+        this.sprite.setPosition(position.x, position.y);
+        this.position = position;
     }
 
     setMine()
@@ -54,19 +54,12 @@ class Tile
             {
                 this.sprite.setFrame(TileFrames.Mistake);
             }
-
-            // Show the mine sprite
-            var mineSprite = this.scene.add.sprite(0, 0, 'minesweeper_sheet');
-            mineSprite.setFrame(TileFrames.Mine);
-            mineSprite.setOrigin(0, 0);
-            mineSprite.setPosition(this.gridPosition.x * CELL_SIZE, this.gridPosition.y * CELL_SIZE);
+            this.createSprite(TileFrames.Mine);
+            
         }
         else if (this.hintValue > 0)
         {
-            var numberSprite = this.scene.add.sprite(0, 0, 'minesweeper_sheet');
-            numberSprite.setFrame(this.hintValue - 1);
-            numberSprite.setOrigin(0, 0);
-            numberSprite.setPosition(this.gridPosition.x * CELL_SIZE, this.gridPosition.y * CELL_SIZE);
+            this.createSprite(this.hintValue - 1);
         }
     }
 
@@ -82,7 +75,7 @@ class Tile
         // Create the mark sprite if it doesn't exists yet
         if (this.markSprite == undefined)
         {
-            this.createMarkSprite();
+            this.markSprite = this.createSprite(TileFrames.Flag);
             return;
         }
 
@@ -92,15 +85,16 @@ class Tile
     unMark()
     {
         this.isMarked = false;
-
         this.markSprite.visible = false;
     }
 
-    createMarkSprite()
+    createSprite(frame: TileFrames): Phaser.GameObjects.Sprite
     {
-        this.markSprite = this.scene.add.sprite(0, 0, 'minesweeper_sheet');
-        this.markSprite.setFrame(TileFrames.Flag);
-        this.markSprite.setOrigin(0, 0);
-        this.markSprite.setPosition(this.gridPosition.x * CELL_SIZE, this.gridPosition.y * CELL_SIZE);
+        var newSprite = this.scene.add.sprite(0, 0, 'minesweeper_sheet');
+        newSprite.setFrame(frame);
+        newSprite.setOrigin(0, 0);
+        newSprite.setPosition(this.position.x, this.position.y);
+
+        return newSprite;
     }
 }

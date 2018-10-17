@@ -17,16 +17,22 @@ class Board
     tiles: Array<Array<Tile>>;    // The tiles stored in a 2D array
     tilesToReveal: Array<Tile>;
 
+    // The total amount of tiles
     get totalTiles(): number { return this.gridSize.x * this.gridSize.y; }
-
+    // Whether input can make changes to the board or not
     get inputEnabled(): boolean { return this.state == BoardStates.Normal; }
+    // The width and height of the board in pixels
+    get boardWidth(): number { return this.gridSize.x * CELL_SIZE; }
+    get boardHeight(): number { return this.gridSize.y * CELL_SIZE; }
 
-    constructor(scene: Phaser.Scene, boardPosition: Phaser.Geom.Point, gridWidth: number, gridHeight: number)
+    constructor(scene: Phaser.Scene, gridWidth: number, gridHeight: number)
     {
         this.gridSize = new Phaser.Geom.Point(gridWidth, gridHeight);
-        this.boardPosition = boardPosition;
+    }
 
-        this.createBoard(scene);
+    setBoardPosition(x: number, y: number)
+    {
+        this.boardPosition = new Phaser.Geom.Point(x, y);
     }
 
     createBoard(scene: Phaser.Scene)
@@ -41,7 +47,7 @@ class Board
             for (var x = 0; x < this.gridSize.x; x++)
             {
                 // Add a new tile on each grid cell
-                this.tiles[y].push(new Tile(scene, x, y));
+                this.tiles[y].push(new Tile(scene, this.toScreenPosition(x, y)));
             }
         }
     }
@@ -84,7 +90,7 @@ class Board
                 }
 
                 // Print the board in the console
-                console.log("[0],[1],[2]", x, y, tile.hintValue);
+                //console.log("", x, y, tile.hintValue);
             }
         }
     }
@@ -119,7 +125,6 @@ class Board
                                 nextTiles.push(adjacent);
                             }
                         });
-                        console.log("length: ", nextTiles.length);
                     }
                 }
                 this.tilesToReveal = nextTiles;
@@ -218,7 +223,9 @@ class Board
 
     getAdjacentTile(tile: Tile, nextX: number, nextY: number): Tile
     {
-        return this.getTile(tile.gridPosition.x + nextX, tile.gridPosition.y + nextY);
+        var gridpos = this.toGridPosition(tile.position.x, tile.position.y);
+
+        return this.getTile(gridpos.x + nextX, gridpos.y + nextY);
     }
 
     getAllAdjacentTiles(tile: Tile): Array<Tile>
@@ -274,6 +281,15 @@ class Board
         return new Phaser.Geom.Point(
             Math.floor((screenPosX - this.boardPosition.x) / CELL_SIZE),  
             Math.floor((screenPosY - this.boardPosition.y) / CELL_SIZE),
+        );
+    }
+
+    // Converts a grid location to a screen position
+    toScreenPosition(gridPosX: number, gridPosY: number): Phaser.Geom.Point
+    {
+        return new Phaser.Geom.Point(
+            Math.floor(this.boardPosition.x + gridPosX * CELL_SIZE),  
+            Math.floor(this.boardPosition.y + gridPosY * CELL_SIZE),
         );
     }
 }
