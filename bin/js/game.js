@@ -11,7 +11,9 @@ var __extends = (this && this.__extends) || (function () {
         d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
     };
 })();
-var CELL_SIZE = 44;
+var CELL_SIZE = 52;
+var SCREEN_WIDTH = 480;
+var SCREEN_HEIGHT = 800;
 var GameScene = /** @class */ (function (_super) {
     __extends(GameScene, _super);
     function GameScene() {
@@ -24,8 +26,10 @@ var GameScene = /** @class */ (function (_super) {
     GameScene.prototype.create = function () {
         game.input.mouse.capture = true;
         // Create the board/grid
-        this.board = new Board(this, new Phaser.Geom.Point(0, 0), 10, 10);
-        this.board.placeMines(12);
+        this.board = new Board(this, 9, 9);
+        this.board.setBoardPosition(SCREEN_WIDTH / 2 - this.board.boardWidth / 2, SCREEN_HEIGHT / 2 - this.board.boardHeight / 2);
+        this.board.createBoard(this);
+        this.board.placeMines(10);
         // The input event for clicking on the screen
         this.input.on('pointerdown', function (pointer) {
             // If the board is a state that disables input, end this function
@@ -64,9 +68,9 @@ var GameScene = /** @class */ (function (_super) {
 }(Phaser.Scene));
 var config = {
     type: Phaser.AUTO,
-    width: 480,
-    height: 800,
-    backgroundColor: '#ffffff',
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
+    backgroundColor: '#e9f4fc',
     parent: 'minesweeper',
     disableContextMenu: true,
     scene: [GameScene]
@@ -79,24 +83,38 @@ var BoardStates;
     BoardStates[BoardStates["GameOver"] = 2] = "GameOver";
 })(BoardStates || (BoardStates = {}));
 var Board = /** @class */ (function () {
-    function Board(scene, boardPosition, gridWidth, gridHeight) {
+    function Board(scene, gridWidth, gridHeight) {
         this.state = BoardStates.Normal;
         this.autoRevealingSpeed = 132; // Miliseconds
         this.autoRevealingTimer = 0;
         this.gridSize = new Phaser.Geom.Point(gridWidth, gridHeight);
-        this.boardPosition = boardPosition;
-        this.createBoard(scene);
     }
     Object.defineProperty(Board.prototype, "totalTiles", {
+        // The total amount of tiles
         get: function () { return this.gridSize.x * this.gridSize.y; },
         enumerable: true,
         configurable: true
     });
     Object.defineProperty(Board.prototype, "inputEnabled", {
+        // Whether input can make changes to the board or not
         get: function () { return this.state == BoardStates.Normal; },
         enumerable: true,
         configurable: true
     });
+    Object.defineProperty(Board.prototype, "boardWidth", {
+        // The width and height of the board in pixels
+        get: function () { return this.gridSize.x * CELL_SIZE; },
+        enumerable: true,
+        configurable: true
+    });
+    Object.defineProperty(Board.prototype, "boardHeight", {
+        get: function () { return this.gridSize.y * CELL_SIZE; },
+        enumerable: true,
+        configurable: true
+    });
+    Board.prototype.setBoardPosition = function (x, y) {
+        this.boardPosition = new Phaser.Geom.Point(x, y);
+    };
     Board.prototype.createBoard = function (scene) {
         this.tiles = [];
         for (var y = 0; y < this.gridSize.y; y++) {
@@ -104,7 +122,7 @@ var Board = /** @class */ (function () {
             this.tiles.push([]);
             for (var x = 0; x < this.gridSize.x; x++) {
                 // Add a new tile on each grid cell
-                this.tiles[y].push(new Tile(scene, x, y));
+                this.tiles[y].push(new Tile(scene, this.toScreenPosition(x, y)));
             }
         }
     };
@@ -130,7 +148,7 @@ var Board = /** @class */ (function () {
                     tile.setHintValue(this.countSurroundingMines(tile));
                 }
                 // Print the board in the console
-                console.log("[0],[1],[2]", x, y, tile.hintValue);
+                //console.log("", x, y, tile.hintValue);
             }
         }
     };
@@ -155,7 +173,6 @@ var Board = /** @class */ (function () {
                                 nextTiles.push(adjacent);
                             }
                         });
-                        console.log("length: ", nextTiles.length);
                     }
                 }
                 this.tilesToReveal = nextTiles;
@@ -222,7 +239,8 @@ var Board = /** @class */ (function () {
         return mines;
     };
     Board.prototype.getAdjacentTile = function (tile, nextX, nextY) {
-        return this.getTile(tile.gridPosition.x + nextX, tile.gridPosition.y + nextY);
+        var gridpos = this.toGridPosition(tile.position.x, tile.position.y);
+        return this.getTile(gridpos.x + nextX, gridpos.y + nextY);
     };
     Board.prototype.getAllAdjacentTiles = function (tile) {
         var adjacentTiles = [];
@@ -259,18 +277,22 @@ var Board = /** @class */ (function () {
     Board.prototype.toGridPosition = function (screenPosX, screenPosY) {
         return new Phaser.Geom.Point(Math.floor((screenPosX - this.boardPosition.x) / CELL_SIZE), Math.floor((screenPosY - this.boardPosition.y) / CELL_SIZE));
     };
+    // Converts a grid location to a screen position
+    Board.prototype.toScreenPosition = function (gridPosX, gridPosY) {
+        return new Phaser.Geom.Point(Math.floor(this.boardPosition.x + gridPosX * CELL_SIZE), Math.floor(this.boardPosition.y + gridPosY * CELL_SIZE));
+    };
     return Board;
 }());
 var TileFrames;
 (function (TileFrames) {
-    TileFrames[TileFrames["Hidden"] = 10] = "Hidden";
-    TileFrames[TileFrames["Revealed"] = 11] = "Revealed";
-    TileFrames[TileFrames["Mistake"] = 12] = "Mistake";
+    TileFrames[TileFrames["Hidden"] = 9] = "Hidden";
+    TileFrames[TileFrames["Revealed"] = 10] = "Revealed";
+    TileFrames[TileFrames["Mistake"] = 11] = "Mistake";
     TileFrames[TileFrames["Mine"] = 20] = "Mine";
-    TileFrames[TileFrames["Flag"] = 21] = "Flag";
+    TileFrames[TileFrames["Flag"] = 18] = "Flag";
 })(TileFrames || (TileFrames = {}));
 var Tile = /** @class */ (function () {
-    function Tile(scene, gridPosX, gridPosY) {
+    function Tile(scene, position) {
         this.hintValue = 0;
         this.isRevealed = false;
         this.isMarked = false;
@@ -281,8 +303,8 @@ var Tile = /** @class */ (function () {
         // Show the hidden tile sprite from the spritesheet
         this.sprite.setFrame(TileFrames.Hidden);
         // Set the position based on the grid location
-        this.sprite.setPosition(gridPosX * CELL_SIZE, gridPosY * CELL_SIZE);
-        this.gridPosition = new Phaser.Geom.Point(gridPosX, gridPosY);
+        this.sprite.setPosition(position.x, position.y);
+        this.position = position;
     }
     Object.defineProperty(Tile.prototype, "containsMine", {
         get: function () { return this.hintValue == -1; },
@@ -301,17 +323,10 @@ var Tile = /** @class */ (function () {
             if (showPlayerMistake) {
                 this.sprite.setFrame(TileFrames.Mistake);
             }
-            // Show the mine sprite
-            var mineSprite = this.scene.add.sprite(0, 0, 'minesweeper_sheet');
-            mineSprite.setFrame(TileFrames.Mine);
-            mineSprite.setOrigin(0, 0);
-            mineSprite.setPosition(this.gridPosition.x * CELL_SIZE, this.gridPosition.y * CELL_SIZE);
+            this.createSprite(TileFrames.Mine);
         }
         else if (this.hintValue > 0) {
-            var numberSprite = this.scene.add.sprite(0, 0, 'minesweeper_sheet');
-            numberSprite.setFrame(this.hintValue - 1);
-            numberSprite.setOrigin(0, 0);
-            numberSprite.setPosition(this.gridPosition.x * CELL_SIZE, this.gridPosition.y * CELL_SIZE);
+            this.createSprite(this.hintValue - 1);
         }
     };
     Tile.prototype.setHintValue = function (value) {
@@ -321,7 +336,7 @@ var Tile = /** @class */ (function () {
         this.isMarked = true;
         // Create the mark sprite if it doesn't exists yet
         if (this.markSprite == undefined) {
-            this.createMarkSprite();
+            this.markSprite = this.createSprite(TileFrames.Flag);
             return;
         }
         this.markSprite.visible = true;
@@ -330,11 +345,12 @@ var Tile = /** @class */ (function () {
         this.isMarked = false;
         this.markSprite.visible = false;
     };
-    Tile.prototype.createMarkSprite = function () {
-        this.markSprite = this.scene.add.sprite(0, 0, 'minesweeper_sheet');
-        this.markSprite.setFrame(TileFrames.Flag);
-        this.markSprite.setOrigin(0, 0);
-        this.markSprite.setPosition(this.gridPosition.x * CELL_SIZE, this.gridPosition.y * CELL_SIZE);
+    Tile.prototype.createSprite = function (frame) {
+        var newSprite = this.scene.add.sprite(0, 0, 'minesweeper_sheet');
+        newSprite.setFrame(frame);
+        newSprite.setOrigin(0, 0);
+        newSprite.setPosition(this.position.x, this.position.y);
+        return newSprite;
     };
     return Tile;
 }());
