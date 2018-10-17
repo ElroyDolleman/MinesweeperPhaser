@@ -17,9 +17,11 @@ class GameScene extends Phaser.Scene
 
     create()
     {
+        game.input.mouse.capture = true;
+
         // Create the board/grid
         this.board = new Board(this, new Phaser.Geom.Point(0, 0), 10, 10);
-        this.board.placeMines(30);
+        this.board.placeMines(12);
 
         // The input event for clicking on the screen
         this.input.on('pointerdown', function (pointer) 
@@ -33,11 +35,33 @@ class GameScene extends Phaser.Scene
             // Calculate the grid location that was clicked
             var gridPosClick = this.board.toGridPosition(pointer.x, pointer.y);
 
+            // If the right button is down, mark the tile instead of revealing it
+            if (pointer.rightButtonDown())
+            {
+                // Mark the tile that the player clicks on (will automatically unmark if it's marked already)
+                if (this.board.containsTile(gridPosClick.x, gridPosClick.y))
+                {
+                    this.board.markTile(gridPosClick.x, gridPosClick.y);
+                }
+
+                // Quit the function to prevent revealing the tile
+                return;
+            }
             // Check if the click happened in the grid
             if (this.board.containsTile(gridPosClick.x, gridPosClick.y))
             {
                 // Reveal the tile that was clicked
                 var revealedTile = this.board.revealTile(gridPosClick.x, gridPosClick.y);
+
+                // When the revealed tile has a mine, it's game over
+                if (!revealedTile.isMarked && revealedTile.containsMine)
+                {
+                    // Show the player where all the mines are
+                    this.board.showAllMines();
+
+                    // Tell the board that it's game over
+                    this.board.changeState(BoardStates.GameOver);
+                }
             }
             
         }, this);
@@ -55,6 +79,7 @@ var config = {
     height: 800,
     backgroundColor: '#ffffff',
     parent: 'minesweeper',
+    disableContextMenu: true,
     scene: [ GameScene ]
 };
 

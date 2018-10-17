@@ -11,6 +11,7 @@ class Tile
 {
     scene: Phaser.Scene;
 
+    markSprite: Phaser.GameObjects.Sprite;
     sprite: Phaser.GameObjects.Sprite;
     gridPosition: Phaser.Geom.Point;
 
@@ -41,14 +42,18 @@ class Tile
         this.hintValue = -1;
     }
 
-    reveal()
+    reveal(showPlayerMistake: boolean = true)
     {
         this.isRevealed = true;
         this.sprite.setFrame(TileFrames.Revealed);
 
         if (this.containsMine)
         {
-            this.sprite.setFrame(TileFrames.Mistake);
+            // Show the player that they made a mistake by making the tile red
+            if (showPlayerMistake)
+            {
+                this.sprite.setFrame(TileFrames.Mistake);
+            }
 
             // Show the mine sprite
             var mineSprite = this.scene.add.sprite(0, 0, 'minesweeper_sheet');
@@ -73,5 +78,29 @@ class Tile
     mark()
     {
         this.isMarked = true;
+
+        // Create the mark sprite if it doesn't exists yet
+        if (this.markSprite == undefined)
+        {
+            this.createMarkSprite();
+            return;
+        }
+
+        this.markSprite.visible = true;
+    }
+
+    unMark()
+    {
+        this.isMarked = false;
+
+        this.markSprite.visible = false;
+    }
+
+    createMarkSprite()
+    {
+        this.markSprite = this.scene.add.sprite(0, 0, 'minesweeper_sheet');
+        this.markSprite.setFrame(TileFrames.Flag);
+        this.markSprite.setOrigin(0, 0);
+        this.markSprite.setPosition(this.gridPosition.x * CELL_SIZE, this.gridPosition.y * CELL_SIZE);
     }
 }

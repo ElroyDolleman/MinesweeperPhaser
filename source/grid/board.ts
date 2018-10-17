@@ -144,6 +144,13 @@ class Board
     revealTile(posX: number, posY: number): Tile
     {
         var revealedTile = this.getTile(posX, posY);
+
+        // Stop the function if the tile is marked
+        if (revealedTile.isMarked)
+        {
+            return revealedTile;
+        }
+
         revealedTile.reveal();
 
         // When a tile with hintValue 0 is revealed, it auto reveals the surrounding tiles
@@ -159,7 +166,18 @@ class Board
     markTile(posX: number, posY: number)
     {
         var markedTile = this.tiles[posY][posX];
-        markedTile.mark();
+
+        // Unmark the tile if it's marked already
+        if (markedTile.isMarked)
+        {
+            markedTile.unMark();
+        }
+
+        // Only mark the tile if it's not revealed yet
+        else if (!markedTile.isRevealed)
+        {
+            markedTile.mark();
+        }
     }
 
     getTile(posX: number, posY: number): Tile
@@ -226,6 +244,23 @@ class Board
         }
 
         return adjacentTiles;
+    }
+
+    showAllMines()
+    {
+        for (var y = 0; y < this.gridSize.y; y++)
+        {
+            for (var x = 0; x < this.gridSize.x; x++)
+            {
+                var tile = this.getTile(x, y);
+
+                // Reveal every tile that has a mine and is not revealed yet
+                if (!tile.isRevealed && tile.containsMine)
+                {
+                    tile.reveal(false);
+                }
+            }
+        }
     }
 
     changeState(newState: BoardStates)
