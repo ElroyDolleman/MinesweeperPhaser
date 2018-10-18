@@ -15,6 +15,7 @@ class Board
     boardPosition: Phaser.Geom.Point; // The position of the board
     gridSize: Phaser.Geom.Point; // The width and height of the grid
 
+    selectedTile: Tile; // The tile that is currently selected
     tiles: Array<Array<Tile>>; // The tiles stored in a 2D array
     tilesToReveal: Array<Tile>; // The tiles that are pending reveal (this is used for chains of zeros)
     
@@ -25,7 +26,7 @@ class Board
     // The total amount of tiles
     get totalTiles(): number { return this.gridSize.x * this.gridSize.y; }
     // Whether input can make changes to the board or not
-    get inputEnabled(): boolean { return this.state == BoardStates.Active; }
+    get isInteractive(): boolean { return this.state == BoardStates.Active; }
     // The width and height of the board in pixels
     get boardWidth(): number { return this.gridSize.x * CELL_SIZE; }
     get boardHeight(): number { return this.gridSize.y * CELL_SIZE; }
@@ -314,6 +315,47 @@ class Board
                     tile.mark();
                 }
             }
+        }
+    }
+
+    // Selects a tile to give player feedback. Returns whether a new tile was selected then previously.
+    selectTile(x: number, y: number): boolean
+    {
+        // If the tile that needs to be selected is already selected, cancel the function
+        if (this.selectedTile != undefined && this.selectedTile.gridLocation.x == x && this.selectedTile.gridLocation.y == y)
+        {
+            return false;
+        }
+
+        // Deselect the old tile
+        this.unselectCurrentTile();
+
+        // If the location is not inside the grid, no tile can be selected
+        // Return true so that the input thinks it's not holding down a tile
+        if (!this.containsTile(x, y)) return true;
+
+        // Get the new selected tile
+        this.selectedTile = this.getTile(x, y);
+        
+        // Select the new tile if it's not revealed yet
+        if (!this.selectedTile.isRevealed)
+        {
+            this.selectedTile.select();
+        }
+        else
+        {
+            this.selectedTile = undefined;
+        }
+
+        return true;
+    }
+
+    unselectCurrentTile()
+    {
+        if (this.selectedTile != undefined)
+        {
+            this.selectedTile.unselect();
+            this.selectedTile = undefined;
         }
     }
 

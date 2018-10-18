@@ -3,7 +3,7 @@ enum TileFrames
     Hidden = 10,
     Revealed = 11,
     Mistake = 12,
-    DebugHidden = 13,
+    Selected = 13,
     Mine = 22,
     Flag = 20
 }
@@ -48,7 +48,17 @@ class Tile
         this.hintValue = -1;
 
         // Debug Code (Shows where the mines are)
-        //this.sprite.setFrame(TileFrames.DebugHidden);
+        //this.sprite.setFrame(TileFrames.Selected);
+    }
+
+    select()
+    {
+        this.sprite.setFrame(TileFrames.Selected);
+    }
+
+    unselect()
+    {
+        this.sprite.setFrame(TileFrames.Hidden);
     }
 
     reveal(showPlayerMistake: boolean = true)

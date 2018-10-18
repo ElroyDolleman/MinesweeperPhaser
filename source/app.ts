@@ -9,6 +9,15 @@ const MAX_BOARD_ROWS: number = 9;
 const BOARD_WIDTH: number = (MAX_BOARD_ROWS * CELL_SIZE);
 const BOARD_POSITION_X: number = SCREEN_WIDTH / 2 - BOARD_WIDTH / 2;
 
+// The amount of time the touch needs to be held down to mark a tile instead of revealing it in miliseconds
+const HOLD_TIME_TO_MARK: number = 300;
+
+enum InputActions
+{
+    Reveal,
+    Mark
+}
+
 class GameScene extends Phaser.Scene
 {
     board: Board;
@@ -17,6 +26,9 @@ class GameScene extends Phaser.Scene
     timer: number = 0;
     secondsPassed: number = 0;
     timerIsRunning: boolean = false;
+
+    touchDownTime: number = 0;
+    disableHeldDown: boolean = false;
 
     gameEnded: boolean = false;
 
@@ -66,65 +78,137 @@ class GameScene extends Phaser.Scene
         this.uiManager.menu.addRestartEvent(function() {
             scene.reset();
         });
+    }
 
-        // The input event for clicking on the screen
-        this.input.on('pointerdown', function (pointer) 
+    revealAction(tileLocationToReveal: Phaser.Geom.Point)
+    {
+        // Reveal the tile that was clicked
+        var revealedTile = this.board.revealTile(tileLocationToReveal.x, tileLocationToReveal.y);
+
+        // When the revealed tile has a mine, it's game over
+        if (!revealedTile.isMarked && revealedTile.containsMine)
         {
-            // If the board is a state that disables input, end this function
-            if (!this.board.inputEnabled)
+            // Show the player where all the mines are
+            this.board.showAllMines();
+
+            // Make the board inactive
+            this.board.changeState(BoardStates.Inactive);
+
+            // Stop the timer
+            this.timerIsRunning = false;
+
+            // Show the game over end screen
+            this.uiManager.endScreen.showEndScreen(false);
+        }
+
+        // Start the timer if it has not started yet
+        if (!this.timerIsRunning) this.timerIsRunning = true;
+    }
+
+    markAction(tileLocationToMark: Phaser.Geom.Point)
+    {
+        // Mark the tile that the player clicks on (will automatically unmark if it's marked already)
+        this.board.markTile(tileLocationToMark.x, tileLocationToMark.y);
+
+        // Update the amount of mines depending how many tiles are marked
+        this.uiManager.hud.updateMinesAmount(this.board.minesAmount - this.board.markedAmount);
+
+        // Start the timer if it has not started yet
+        if (!this.timerIsRunning) this.timerIsRunning = true;
+    }
+
+    boardInputUpdate()
+    {
+        // If the board is not interactive, cancel the function to prevent unecessary input checks
+        if (!this.board.isInteractive) return;
+
+        if (this.input.activePointer.isDown && !this.disableHeldDown)
+        {
+            // Calculate the grid location that was clicked and select that tile
+            var gridPosClick = this.board.toGridPosition(this.input.activePointer.x, this.input.activePointer.y);
+            var newTileWasSelected = this.board.selectTile(gridPosClick.x, gridPosClick.y);
+
+            if (this.input.activePointer.wasTouch)
             {
+                // If there was no new tile selected, count how long the current tile was held down
+                if (!newTileWasSelected)
+                {
+                    this.touchDownTime += 1000 / 60;
+                    
+                    if (this.touchDownTime >= HOLD_TIME_TO_MARK)
+                    {
+                        this.touchDownTime = 0;
+                        this.board.unselectCurrentTile();
+
+                        // Fire the reveal action
+                        this.markAction(this.getGridPointerLocation(this.input.activePointer));
+
+                        // Make sure that holding down longer won't fire any functions anymore
+                        this.disableHeldDown = true;
+                    }
+                }
+                // Reset the timer whenever a different tile is selected
+                else this.touchDownTime = 0;
+            }
+        }
+        else if (this.input.activePointer.justUp)
+        {
+            // Unselect the currently selected tile
+            this.board.unselectCurrentTile();
+
+            // Reset the amount of time a touch input was held down
+            this.touchDownTime = 0;
+
+            // If the held down was disabled, enable it and cancle the up input
+            if (this.disableHeldDown)
+            {
+                this.disableHeldDown = false;
+                return;
+            }
+
+            if (this.input.activePointer.rightButtonDown())
+            {
+                // Calculate the grid location that was clicked
+                var gridPosClick = this.getGridPointerLocation(this.input.activePointer);
+
+                // Select the tile to give the player feedback which tile it is going to reveal
+                if (gridPosClick != null)
+                {
+                    this.markAction(gridPosClick);
+                }
+
+                // Cancel the function so that the reveal action won't fire
                 return;
             }
 
             // Calculate the grid location that was clicked
-            var gridPosClick = this.board.toGridPosition(pointer.x, pointer.y);
+            var gridPosClick = this.getGridPointerLocation(this.input.activePointer);
 
-            // If the click was not on the board, cancle the function
-            if (!this.board.containsTile(gridPosClick.x, gridPosClick.y))
+            // Select the tile to give the player feedback which tile it is going to reveal
+            if (gridPosClick != null)
             {
-                return;
+                this.revealAction(gridPosClick);
             }
+        }
+    }
 
-            // Start the timer if it has not started yet
-            if (!this.timerIsRunning) this.timerIsRunning = true;
+    getGridPointerLocation(pointer: Phaser.Input.Pointer)
+    {
+        // Calculate the grid location that was clicked
+        var gridPosClick = this.board.toGridPosition(pointer.x, pointer.y);
 
-            // If the right button is down, mark the tile instead of revealing it
-            if (pointer.rightButtonDown())
-            {
-                // Mark the tile that the player clicks on (will automatically unmark if it's marked already)
-                this.board.markTile(gridPosClick.x, gridPosClick.y);
-
-                // Update the amount of mines depending how many tiles are marked
-                this.uiManager.hud.updateMinesAmount(this.board.minesAmount - this.board.markedAmount);
-            }
-            // If the left button is down, reveal the tile
-            else
-            {
-                // Reveal the tile that was clicked
-                var revealedTile = this.board.revealTile(gridPosClick.x, gridPosClick.y);
-
-                // When the revealed tile has a mine, it's game over
-                if (!revealedTile.isMarked && revealedTile.containsMine)
-                {
-                    // Show the player where all the mines are
-                    this.board.showAllMines();
-
-                    // Make the board inactive
-                    this.board.changeState(BoardStates.Inactive);
-
-                    // Stop the timer
-                    this.timerIsRunning = false;
-
-                    // Show the game over end screen
-                    this.uiManager.endScreen.showEndScreen(false);
-                }
-            }
-
-        }, this);
+        // Check if the click was on the board
+        if (this.board.containsTile(gridPosClick.x, gridPosClick.y))
+        {
+            return gridPosClick;
+        }
+        return null;
     }
 
     update()
     {
+        this.boardInputUpdate();
+
         // Stop the update if the game ended
         if (this.gameEnded) return;
 
