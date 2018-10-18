@@ -5,10 +5,14 @@ const TIMER_FONT_WIDTH: number = 50;
 const TIMER_FONT_HEIGHT: number = 90;
 const MAX_TIME: number = 999;
 
+const MAX_BOARD_ROWS: number = 9;
+const BOARD_WIDTH: number = (MAX_BOARD_ROWS * CELL_SIZE);
+const BOARD_POSITION_X: number = SCREEN_WIDTH / 2 - BOARD_WIDTH / 2;
+
 class GameScene extends Phaser.Scene
 {
     board: Board;
-    ui: UI;
+    uiManager: UIManager;
 
     timer: number = 0;
     secondsPassed: number = 0;
@@ -26,6 +30,7 @@ class GameScene extends Phaser.Scene
         // Load the spritesheet that contains all images
         this.load.spritesheet('minesweeper_sheet', 'assets/minesweeper_sheet.png', { frameWidth: CELL_SIZE, frameHeight: CELL_SIZE });
         this.load.spritesheet('timer_font_sheet', 'assets/timer_font_sheet.png', { frameWidth: TIMER_FONT_WIDTH, frameHeight: TIMER_FONT_HEIGHT });
+        this.load.image('ui', 'assets/ui_sheet.png');
     }
 
     create()
@@ -38,9 +43,9 @@ class GameScene extends Phaser.Scene
         this.board.createBoard(this);
         this.board.placeMines(10);
 
-        // Make the UI as width as the board and place it above the board
-        this.ui = new UI(this, this.board.boardPosition.x, this.board.boardPosition.x, this.board.boardWidth);
-        this.ui.updateMinesAmount(this.board.minesAmount);
+        // Initialize the UI Manager
+        this.uiManager = new UIManager(this);
+        this.uiManager.hud.updateMinesAmount(this.board.minesAmount);
 
         // The input event for clicking on the screen
         this.input.on('pointerdown', function (pointer) 
@@ -70,7 +75,7 @@ class GameScene extends Phaser.Scene
                 this.board.markTile(gridPosClick.x, gridPosClick.y);
 
                 // Update the amount of mines depending how many tiles are marked
-                this.ui.updateMinesAmount(this.board.minesAmount - this.board.markedAmount);
+                this.uiManager.hud.updateMinesAmount(this.board.minesAmount - this.board.markedAmount);
             }
             // If the left button is down, reveal the tile
             else
@@ -114,16 +119,17 @@ class GameScene extends Phaser.Scene
             // Show the player where all the mines are by marking them
             this.board.markAllMines();
 
-            // Update the UI
-            this.ui.updateMinesAmount(0);
+            // Update the HUD and show the win screen
+            this.uiManager.hud.updateMinesAmount(0);
+            this.uiManager.winScreen.setVisible(true);
         }
         else if (this.timerIsRunning && this.secondsPassed < MAX_TIME)
         {
-            // When the next second has passed, update it in the UI
+            // When the next second has passed, update it in the HUD
             this.timer += elapsedMiliseconds;
             if (this.timer > (this.secondsPassed + 1) * 1000)
             {
-                this.ui.updateTime(this.secondsPassed++);
+                this.uiManager.hud.updateTime(this.secondsPassed++);
             }
         }
     }

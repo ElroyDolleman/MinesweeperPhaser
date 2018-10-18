@@ -1,7 +1,7 @@
 const DIGIT_AMOUNT = 3;
 const MINUS_SIGN_FRAME = 11;
 
-class UI
+class HUD
 {
     position: Phaser.Geom.Point;
 
