@@ -86,7 +86,7 @@ var GameScene = /** @class */ (function (_super) {
             this.uiManager.endScreen.showEndScreen(false);
         }
         // Start the timer if it has not started yet
-        if (!this.timerIsRunning)
+        else if (!this.timerIsRunning)
             this.timerIsRunning = true;
     };
     GameScene.prototype.markAction = function (tileLocationToMark) {
@@ -129,7 +129,7 @@ var GameScene = /** @class */ (function (_super) {
             this.board.unselectCurrentTile();
             // Reset the amount of time a touch input was held down
             this.touchDownTime = 0;
-            // If the held down was disabled, enable it and cancle the up input
+            // If the held down was disabled, enable it and cancel the up input
             if (this.disableHeldDown) {
                 this.disableHeldDown = false;
                 return;
@@ -193,6 +193,7 @@ var config = {
     type: Phaser.AUTO,
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
+    autoResize: true,
     backgroundColor: '#e9f4fc',
     parent: 'minesweeper',
     disableContextMenu: true,
