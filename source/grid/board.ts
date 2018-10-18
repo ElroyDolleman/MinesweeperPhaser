@@ -1,13 +1,13 @@
 enum BoardStates
 {
-    Normal,
+    Active,
     AutoRevealing,
-    GameOver,
+    Inactive,
 }
 
 class Board
 {
-    state: BoardStates = BoardStates.Normal;
+    state: BoardStates = BoardStates.Active;
 
     autoRevealingInterval: number = 132; // Miliseconds
     autoRevealingTimer: number = 0;
@@ -17,15 +17,15 @@ class Board
 
     tiles: Array<Array<Tile>>; // The tiles stored in a 2D array
     tilesToReveal: Array<Tile>; // The tiles that are pending reveal (this is used for chains of zeros)
+    
     tilesRevealed: number = 0; // The amount of tiles that are revealed
-
-    minesAmount: number;
-    markedAmount: number = 0;
+    minesAmount: number; // The amount of mines that the board has
+    markedAmount: number = 0; // The amount of tiles that are marked
 
     // The total amount of tiles
     get totalTiles(): number { return this.gridSize.x * this.gridSize.y; }
     // Whether input can make changes to the board or not
-    get inputEnabled(): boolean { return this.state == BoardStates.Normal; }
+    get inputEnabled(): boolean { return this.state == BoardStates.Active; }
     // The width and height of the board in pixels
     get boardWidth(): number { return this.gridSize.x * CELL_SIZE; }
     get boardHeight(): number { return this.gridSize.y * CELL_SIZE; }
@@ -59,6 +59,23 @@ class Board
                 this.tiles[y].push(new Tile(scene, this.toScreenPosition(x, y), x, y));
             }
         }
+    }
+
+    reset()
+    {
+        for (var y = 0; y < this.gridSize.y; y++)
+        {
+            for (var x = 0; x < this.gridSize.x; x++)
+            {
+                this.tiles[y][x].reset();
+            }
+        }
+
+        this.markedAmount = 0;
+        this.tilesRevealed = 0;
+        this.placeMines(this.minesAmount);
+
+        this.changeState(BoardStates.Active);
     }
 
     placeMines(amount: number)
@@ -142,7 +159,7 @@ class Board
                 // Change the state back to normal when there are no more tiles to reveal
                 if (this.tilesToReveal.length == 0)
                 {
-                    this.changeState(BoardStates.Normal);
+                    this.changeState(BoardStates.Active);
                 }
             }
         }

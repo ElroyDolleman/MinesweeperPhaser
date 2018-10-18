@@ -12,6 +12,7 @@ class Tile
 {
     scene: Phaser.Scene;
 
+    hintSprite: Phaser.GameObjects.Sprite;
     markSprite: Phaser.GameObjects.Sprite;
     sprite: Phaser.GameObjects.Sprite;
 
@@ -62,12 +63,12 @@ class Tile
             {
                 this.sprite.setFrame(TileFrames.Mistake);
             }
-            this.createSprite(TileFrames.Mine);
+            this.hintSprite = this.createSprite(TileFrames.Mine);
             
         }
         else if (this.hintValue > 0)
         {
-            this.createSprite(this.hintValue - 1);
+            this.hintSprite = this.createSprite(this.hintValue - 1);
         }
     }
 
@@ -104,5 +105,19 @@ class Tile
         newSprite.setPosition(this.position.x, this.position.y);
 
         return newSprite;
+    }
+
+    reset()
+    {
+        // Unmark the tile
+        if (this.isMarked) this.unMark();
+        
+        // Destroy hint number or mine if it was shown to the player
+        this.hintValue = 0;
+        if (this.hintSprite != undefined) this.hintSprite.destroy();
+
+        // Make the tile hidden again
+        this.isRevealed = false;
+        this.sprite.setFrame(TileFrames.Hidden);
     }
 }

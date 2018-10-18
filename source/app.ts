@@ -33,6 +33,20 @@ class GameScene extends Phaser.Scene
         this.load.image('ui', 'assets/ui_sheet.png');
     }
 
+    reset()
+    {
+       this.timer = 0;
+       this.secondsPassed = 0;
+       this.timerIsRunning = false;
+       this.gameEnded = false;
+
+       this.uiManager.hud.updateTime(0);
+       this.uiManager.hud.updateMinesAmount(this.board.minesAmount);
+       this.uiManager.endScreen.hideEndScreen();
+
+       this.board.reset();
+    }
+
     create()
     {
         game.input.mouse.capture = true;
@@ -46,6 +60,12 @@ class GameScene extends Phaser.Scene
         // Initialize the UI Manager
         this.uiManager = new UIManager(this);
         this.uiManager.hud.updateMinesAmount(this.board.minesAmount);
+
+        // Create a Restart Event
+        let scene = this;
+        this.uiManager.menu.addRestartEvent(function() {
+            scene.reset();
+        });
 
         // The input event for clicking on the screen
         this.input.on('pointerdown', function (pointer) 
@@ -89,11 +109,14 @@ class GameScene extends Phaser.Scene
                     // Show the player where all the mines are
                     this.board.showAllMines();
 
-                    // Tell the board that it's game over
-                    this.board.changeState(BoardStates.GameOver);
+                    // Make the board inactive
+                    this.board.changeState(BoardStates.Inactive);
 
                     // Stop the timer
                     this.timerIsRunning = false;
+
+                    // Show the game over end screen
+                    this.uiManager.endScreen.showEndScreen(false);
                 }
             }
 
@@ -121,7 +144,7 @@ class GameScene extends Phaser.Scene
 
             // Update the HUD and show the win screen
             this.uiManager.hud.updateMinesAmount(0);
-            this.uiManager.winScreen.setVisible(true);
+            this.uiManager.endScreen.showEndScreen(true);
         }
         else if (this.timerIsRunning && this.secondsPassed < MAX_TIME)
         {

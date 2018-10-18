@@ -1,13 +1,12 @@
 class UIManager
 {
     hud: HUD;
-    winScreen: WinScreen;
     menu: Menu;
+    endScreen: EndScreen;
 
     constructor(scene: Phaser.Scene)
     {
-        this.winScreen = new WinScreen(scene);
-        this.winScreen.setVisible(false);
+        this.endScreen = new EndScreen(scene);
 
         this.menu = new Menu(scene);
 
