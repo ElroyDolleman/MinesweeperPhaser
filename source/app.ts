@@ -102,7 +102,7 @@ class GameScene extends Phaser.Scene
         }
 
         // Start the timer if it has not started yet
-        if (!this.timerIsRunning) this.timerIsRunning = true;
+        else if (!this.timerIsRunning) this.timerIsRunning = true;
     }
 
     markAction(tileLocationToMark: Phaser.Geom.Point)
@@ -159,7 +159,7 @@ class GameScene extends Phaser.Scene
             // Reset the amount of time a touch input was held down
             this.touchDownTime = 0;
 
-            // If the held down was disabled, enable it and cancle the up input
+            // If the held down was disabled, enable it and cancel the up input
             if (this.disableHeldDown)
             {
                 this.disableHeldDown = false;
@@ -246,6 +246,7 @@ var config = {
     type: Phaser.AUTO,
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
+    autoResize: true,
     backgroundColor: '#e9f4fc',
     parent: 'minesweeper',
     disableContextMenu: true,
