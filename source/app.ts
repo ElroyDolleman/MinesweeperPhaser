@@ -63,6 +63,9 @@ class GameScene extends Phaser.Scene
     {
         game.input.mouse.capture = true;
 
+        window.addEventListener('resize', this.resize);
+        this.resize();
+
         // Create the board/grid
         this.board = new Board(this, 9, 9);
         this.board.setBoardPosition(SCREEN_WIDTH / 2 - this.board.boardWidth / 2, SCREEN_HEIGHT / 2 - this.board.boardHeight / 2);
@@ -240,13 +243,26 @@ class GameScene extends Phaser.Scene
             }
         }
     }
+
+    resize() 
+    {
+        var canvas = game.canvas, width = window.innerWidth, height = window.innerHeight;
+        var wratio = width / height, ratio = canvas.width / canvas.height;
+    
+        if (wratio < ratio) {
+            canvas.style.width = width + "px";
+            canvas.style.height = (width / ratio) + "px";
+        } else {
+            canvas.style.width = (height * ratio) + "px";
+            canvas.style.height = height + "px";
+        }
+    }
 }
 
 var config = {
     type: Phaser.AUTO,
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
-    autoResize: true,
     backgroundColor: '#e9f4fc',
     parent: 'minesweeper',
     disableContextMenu: true,
