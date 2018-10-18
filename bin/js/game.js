@@ -24,6 +24,7 @@ var GameScene = /** @class */ (function (_super) {
         _this.timer = 0;
         _this.secondsPassed = 0;
         _this.timerIsRunning = false;
+        _this.gameEnded = false;
         return _this;
     }
     GameScene.prototype.preload = function () {
@@ -80,11 +81,22 @@ var GameScene = /** @class */ (function (_super) {
         }, this);
     };
     GameScene.prototype.update = function () {
+        // Stop the update if the game ended
+        if (this.gameEnded)
+            return;
         // Fixed timestep
         var elapsedMiliseconds = 1000 / 60;
         // Update the board (for autorevealing)
         this.board.update(elapsedMiliseconds);
-        if (this.timerIsRunning && this.secondsPassed < MAX_TIME) {
+        if (this.board.allSafeTilesAreRevealed) {
+            // The player has won the game so it ended
+            this.gameEnded = true;
+            // Show the player where all the mines are by marking them
+            this.board.markAllMines();
+            // Update the UI
+            this.ui.updateMinesAmount(0);
+        }
+        else if (this.timerIsRunning && this.secondsPassed < MAX_TIME) {
             // When the next second has passed, update it in the UI
             this.timer += elapsedMiliseconds;
             if (this.timer > (this.secondsPassed + 1) * 1000) {
@@ -175,8 +187,9 @@ var BoardStates;
 var Board = /** @class */ (function () {
     function Board(scene, gridWidth, gridHeight) {
         this.state = BoardStates.Normal;
-        this.autoRevealingSpeed = 132; // Miliseconds
+        this.autoRevealingInterval = 132; // Miliseconds
         this.autoRevealingTimer = 0;
+        this.tilesRevealed = 0; // The amount of tiles that are revealed
         this.markedAmount = 0;
         this.gridSize = new Phaser.Geom.Point(gridWidth, gridHeight);
     }
@@ -203,6 +216,18 @@ var Board = /** @class */ (function () {
         enumerable: true,
         configurable: true
     });
+    Object.defineProperty(Board.prototype, "unrevealedTiles", {
+        // The amount of tiles that are still unrevealed
+        get: function () { return this.totalTiles - this.tilesRevealed; },
+        enumerable: true,
+        configurable: true
+    });
+    Object.defineProperty(Board.prototype, "allSafeTilesAreRevealed", {
+        // Whether all the tiles that are not mines are revealed
+        get: function () { return this.unrevealedTiles == this.minesAmount; },
+        enumerable: true,
+        configurable: true
+    });
     Board.prototype.setBoardPosition = function (x, y) {
         this.boardPosition = new Phaser.Geom.Point(x, y);
     };
@@ -213,7 +238,7 @@ var Board = /** @class */ (function () {
             this.tiles.push([]);
             for (var x = 0; x < this.gridSize.x; x++) {
                 // Add a new tile on each grid cell
-                this.tiles[y].push(new Tile(scene, this.toScreenPosition(x, y)));
+                this.tiles[y].push(new Tile(scene, this.toScreenPosition(x, y), x, y));
             }
         }
     };
@@ -240,20 +265,20 @@ var Board = /** @class */ (function () {
                     tile.setHintValue(this.countSurroundingMines(tile));
                 }
                 // Print the board in the console
-                console.log("", x, y, tile.hintValue);
+                //console.log("", x, y, tile.hintValue);
             }
         }
     };
     Board.prototype.update = function (elapsedMiliseconds) {
+        var _this = this;
         if (this.state == BoardStates.AutoRevealing) {
             // Update the auto revealing
             this.autoRevealingTimer += elapsedMiliseconds;
-            if (this.autoRevealingTimer >= this.autoRevealingSpeed) {
-                this.autoRevealingTimer -= this.autoRevealingSpeed;
+            if (this.autoRevealingTimer >= this.autoRevealingInterval) {
+                this.autoRevealingTimer -= this.autoRevealingInterval;
                 // Reveal all the tiles that are pending reveal
                 this.tilesToReveal.forEach(function (tile) {
-                    if (!tile.isMarked)
-                        tile.reveal();
+                    _this.revealTile(tile.gridLocation.x, tile.gridLocation.y);
                 });
                 // Add new tiles to reveal next
                 var nextTiles = [];
@@ -284,13 +309,16 @@ var Board = /** @class */ (function () {
     };
     Board.prototype.revealTile = function (posX, posY) {
         var revealedTile = this.getTile(posX, posY);
-        // Stop the function if the tile is marked
-        if (revealedTile.isMarked) {
+        // Stop the function if the tile is marked or revealed already
+        if (revealedTile.isMarked || revealedTile.isRevealed) {
             return revealedTile;
         }
         revealedTile.reveal();
+        // Count the amount of revealed tiles if it's not a mine
+        if (!revealedTile.containsMine)
+            this.tilesRevealed++;
         // When a tile with hintValue 0 is revealed, it auto reveals the surrounding tiles
-        if (revealedTile.hintValue == 0) {
+        if (revealedTile.hintValue == 0 && this.state != BoardStates.AutoRevealing) {
             this.tilesToReveal = this.getAllAdjacentTiles(revealedTile);
             this.changeState(BoardStates.AutoRevealing);
         }
@@ -334,8 +362,7 @@ var Board = /** @class */ (function () {
         return mines;
     };
     Board.prototype.getAdjacentTile = function (tile, nextX, nextY) {
-        var gridpos = this.toGridPosition(tile.position.x, tile.position.y);
-        return this.getTile(gridpos.x + nextX, gridpos.y + nextY);
+        return this.getTile(tile.gridLocation.x + nextX, tile.gridLocation.y + nextY);
     };
     Board.prototype.getAllAdjacentTiles = function (tile) {
         var adjacentTiles = [];
@@ -365,6 +392,17 @@ var Board = /** @class */ (function () {
             }
         }
     };
+    Board.prototype.markAllMines = function () {
+        for (var y = 0; y < this.gridSize.y; y++) {
+            for (var x = 0; x < this.gridSize.x; x++) {
+                var tile = this.getTile(x, y);
+                // Mark every tile that has a mine and is not marked yet
+                if (tile.containsMine && !tile.isMarked) {
+                    tile.mark();
+                }
+            }
+        }
+    };
     Board.prototype.changeState = function (newState) {
         this.state = newState;
     };
@@ -383,11 +421,12 @@ var TileFrames;
     TileFrames[TileFrames["Hidden"] = 10] = "Hidden";
     TileFrames[TileFrames["Revealed"] = 11] = "Revealed";
     TileFrames[TileFrames["Mistake"] = 12] = "Mistake";
+    TileFrames[TileFrames["DebugHidden"] = 13] = "DebugHidden";
     TileFrames[TileFrames["Mine"] = 22] = "Mine";
     TileFrames[TileFrames["Flag"] = 20] = "Flag";
 })(TileFrames || (TileFrames = {}));
 var Tile = /** @class */ (function () {
-    function Tile(scene, position) {
+    function Tile(scene, position, gridLocationX, gridLocationY) {
         this.hintValue = 0;
         this.isRevealed = false;
         this.isMarked = false;
@@ -400,6 +439,7 @@ var Tile = /** @class */ (function () {
         // Set the position based on the grid location
         this.sprite.setPosition(position.x, position.y);
         this.position = position;
+        this.gridLocation = new Phaser.Geom.Point(gridLocationX, gridLocationY);
     }
     Object.defineProperty(Tile.prototype, "containsMine", {
         get: function () { return this.hintValue == -1; },
@@ -408,6 +448,8 @@ var Tile = /** @class */ (function () {
     });
     Tile.prototype.setMine = function () {
         this.hintValue = -1;
+        // Debug Code (Shows where the mines are)
+        //this.sprite.setFrame(TileFrames.DebugHidden);
     };
     Tile.prototype.reveal = function (showPlayerMistake) {
         if (showPlayerMistake === void 0) { showPlayerMistake = true; }
