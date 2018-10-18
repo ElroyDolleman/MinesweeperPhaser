@@ -9,13 +9,15 @@ class Board
 {
     state: BoardStates = BoardStates.Normal;
 
-    autoRevealingSpeed: number = 132; // Miliseconds
+    autoRevealingInterval: number = 132; // Miliseconds
     autoRevealingTimer: number = 0;
 
-    boardPosition: Phaser.Geom.Point;  // The position of the board
-    gridSize: Phaser.Geom.Point;  // The widht and height of the grid
-    tiles: Array<Array<Tile>>;    // The tiles stored in a 2D array
-    tilesToReveal: Array<Tile>;
+    boardPosition: Phaser.Geom.Point; // The position of the board
+    gridSize: Phaser.Geom.Point; // The width and height of the grid
+
+    tiles: Array<Array<Tile>>; // The tiles stored in a 2D array
+    tilesToReveal: Array<Tile>; // The tiles that are pending reveal (this is used for chains of zeros)
+    tilesRevealed: number = 0; // The amount of tiles that are revealed
 
     minesAmount: number;
     markedAmount: number = 0;
@@ -27,6 +29,10 @@ class Board
     // The width and height of the board in pixels
     get boardWidth(): number { return this.gridSize.x * CELL_SIZE; }
     get boardHeight(): number { return this.gridSize.y * CELL_SIZE; }
+    // The amount of tiles that are still unrevealed
+    get unrevealedTiles(): number { return this.totalTiles - this.tilesRevealed; }
+    // Whether all the tiles that are not mines are revealed
+    get allSafeTilesAreRevealed(): boolean { return this.unrevealedTiles == this.minesAmount; }
 
     constructor(scene: Phaser.Scene, gridWidth: number, gridHeight: number)
     {
@@ -50,7 +56,7 @@ class Board
             for (var x = 0; x < this.gridSize.x; x++)
             {
                 // Add a new tile on each grid cell
-                this.tiles[y].push(new Tile(scene, this.toScreenPosition(x, y)));
+                this.tiles[y].push(new Tile(scene, this.toScreenPosition(x, y), x, y));
             }
         }
     }
@@ -105,13 +111,13 @@ class Board
         {
             // Update the auto revealing
             this.autoRevealingTimer += elapsedMiliseconds;
-            if (this.autoRevealingTimer >= this.autoRevealingSpeed)
+            if (this.autoRevealingTimer >= this.autoRevealingInterval)
             {
-                this.autoRevealingTimer -= this.autoRevealingSpeed;
+                this.autoRevealingTimer -= this.autoRevealingInterval;
 
                 // Reveal all the tiles that are pending reveal
                 this.tilesToReveal.forEach(tile => {
-                    if (!tile.isMarked) tile.reveal();
+                    this.revealTile(tile.gridLocation.x, tile.gridLocation.y);
                 });
 
                 // Add new tiles to reveal next
@@ -122,7 +128,7 @@ class Board
                     {
                         // Put all the adjacent tiles in the array
                         this.getAllAdjacentTiles(this.tilesToReveal[i]).forEach(adjacent => {
-                            
+                        
                             // Add the tiles that are not revealed yet
                             if (!adjacent.isRevealed && !adjacent.isMarked)
                             {
@@ -154,16 +160,19 @@ class Board
     {
         var revealedTile = this.getTile(posX, posY);
 
-        // Stop the function if the tile is marked
-        if (revealedTile.isMarked)
+        // Stop the function if the tile is marked or revealed already
+        if (revealedTile.isMarked || revealedTile.isRevealed)
         {
             return revealedTile;
         }
 
         revealedTile.reveal();
 
+        // Count the amount of revealed tiles if it's not a mine
+        if (!revealedTile.containsMine) this.tilesRevealed++;
+
         // When a tile with hintValue 0 is revealed, it auto reveals the surrounding tiles
-        if (revealedTile.hintValue == 0)
+        if (revealedTile.hintValue == 0 && this.state != BoardStates.AutoRevealing)
         {
             this.tilesToReveal = this.getAllAdjacentTiles(revealedTile);
             this.changeState(BoardStates.AutoRevealing);            
@@ -229,9 +238,7 @@ class Board
 
     getAdjacentTile(tile: Tile, nextX: number, nextY: number): Tile
     {
-        var gridpos = this.toGridPosition(tile.position.x, tile.position.y);
-
-        return this.getTile(gridpos.x + nextX, gridpos.y + nextY);
+        return this.getTile(tile.gridLocation.x + nextX, tile.gridLocation.y + nextY);
     }
 
     getAllAdjacentTiles(tile: Tile): Array<Tile>
@@ -250,7 +257,7 @@ class Board
                 // Add the adjacent tile to the list if it's not undefined
                 var adjacent = this.getAdjacentTile(tile, x, y);
                 if (adjacent != undefined) 
-                {
+                {                    
                     adjacentTiles.push(adjacent);
                 }
             }
@@ -271,6 +278,23 @@ class Board
                 if (!tile.isRevealed && tile.containsMine)
                 {
                     tile.reveal(false);
+                }
+            }
+        }
+    }
+
+    markAllMines()
+    {
+        for (var y = 0; y < this.gridSize.y; y++)
+        {
+            for (var x = 0; x < this.gridSize.x; x++)
+            {
+                var tile = this.getTile(x, y);
+
+                // Mark every tile that has a mine and is not marked yet
+                if (tile.containsMine && !tile.isMarked)
+                {
+                    tile.mark();
                 }
             }
         }

@@ -14,6 +14,8 @@ class GameScene extends Phaser.Scene
     secondsPassed: number = 0;
     timerIsRunning: boolean = false;
 
+    gameEnded: boolean = false;
+
     constructor()
     {
         super({ key: 'GameScene', active: true});
@@ -95,13 +97,27 @@ class GameScene extends Phaser.Scene
 
     update()
     {
+        // Stop the update if the game ended
+        if (this.gameEnded) return;
+
         // Fixed timestep
         var elapsedMiliseconds = 1000 / 60;
 
         // Update the board (for autorevealing)
         this.board.update(elapsedMiliseconds);
 
-        if (this.timerIsRunning && this.secondsPassed < MAX_TIME)
+        if (this.board.allSafeTilesAreRevealed)
+        {
+            // The player has won the game so it ended
+            this.gameEnded = true;
+
+            // Show the player where all the mines are by marking them
+            this.board.markAllMines();
+
+            // Update the UI
+            this.ui.updateMinesAmount(0);
+        }
+        else if (this.timerIsRunning && this.secondsPassed < MAX_TIME)
         {
             // When the next second has passed, update it in the UI
             this.timer += elapsedMiliseconds;

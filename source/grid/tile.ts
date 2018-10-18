@@ -3,6 +3,7 @@ enum TileFrames
     Hidden = 10,
     Revealed = 11,
     Mistake = 12,
+    DebugHidden = 13,
     Mine = 22,
     Flag = 20
 }
@@ -13,7 +14,9 @@ class Tile
 
     markSprite: Phaser.GameObjects.Sprite;
     sprite: Phaser.GameObjects.Sprite;
+
     position: Phaser.Geom.Point;
+    gridLocation: Phaser.Geom.Point;
 
     hintValue: number = 0;
     isRevealed: boolean = false;
@@ -21,7 +24,7 @@ class Tile
 
     get containsMine(): boolean { return this.hintValue == -1; }
 
-    constructor(scene: Phaser.Scene, position: Phaser.Geom.Point)
+    constructor(scene: Phaser.Scene, position: Phaser.Geom.Point, gridLocationX: number, gridLocationY: number)
     {
         this.scene = scene;
 
@@ -35,11 +38,16 @@ class Tile
         // Set the position based on the grid location
         this.sprite.setPosition(position.x, position.y);
         this.position = position;
+
+        this.gridLocation = new Phaser.Geom.Point(gridLocationX, gridLocationY);
     }
 
     setMine()
     {
         this.hintValue = -1;
+
+        // Debug Code (Shows where the mines are)
+        //this.sprite.setFrame(TileFrames.DebugHidden);
     }
 
     reveal(showPlayerMistake: boolean = true)
