@@ -17,6 +17,9 @@ var SCREEN_HEIGHT = 800;
 var TIMER_FONT_WIDTH = 50;
 var TIMER_FONT_HEIGHT = 90;
 var MAX_TIME = 999;
+var MAX_BOARD_ROWS = 9;
+var BOARD_WIDTH = (MAX_BOARD_ROWS * CELL_SIZE);
+var BOARD_POSITION_X = SCREEN_WIDTH / 2 - BOARD_WIDTH / 2;
 var GameScene = /** @class */ (function (_super) {
     __extends(GameScene, _super);
     function GameScene() {
@@ -31,6 +34,17 @@ var GameScene = /** @class */ (function (_super) {
         // Load the spritesheet that contains all images
         this.load.spritesheet('minesweeper_sheet', 'assets/minesweeper_sheet.png', { frameWidth: CELL_SIZE, frameHeight: CELL_SIZE });
         this.load.spritesheet('timer_font_sheet', 'assets/timer_font_sheet.png', { frameWidth: TIMER_FONT_WIDTH, frameHeight: TIMER_FONT_HEIGHT });
+        this.load.image('ui', 'assets/ui_sheet.png');
+    };
+    GameScene.prototype.reset = function () {
+        this.timer = 0;
+        this.secondsPassed = 0;
+        this.timerIsRunning = false;
+        this.gameEnded = false;
+        this.uiManager.hud.updateTime(0);
+        this.uiManager.hud.updateMinesAmount(this.board.minesAmount);
+        this.uiManager.endScreen.hideEndScreen();
+        this.board.reset();
     };
     GameScene.prototype.create = function () {
         game.input.mouse.capture = true;
@@ -39,9 +53,14 @@ var GameScene = /** @class */ (function (_super) {
         this.board.setBoardPosition(SCREEN_WIDTH / 2 - this.board.boardWidth / 2, SCREEN_HEIGHT / 2 - this.board.boardHeight / 2);
         this.board.createBoard(this);
         this.board.placeMines(10);
-        // Make the UI as width as the board and place it above the board
-        this.ui = new UI(this, this.board.boardPosition.x, this.board.boardPosition.x, this.board.boardWidth);
-        this.ui.updateMinesAmount(this.board.minesAmount);
+        // Initialize the UI Manager
+        this.uiManager = new UIManager(this);
+        this.uiManager.hud.updateMinesAmount(this.board.minesAmount);
+        // Create a Restart Event
+        var scene = this;
+        this.uiManager.menu.addRestartEvent(function () {
+            scene.reset();
+        });
         // The input event for clicking on the screen
         this.input.on('pointerdown', function (pointer) {
             // If the board is a state that disables input, end this function
@@ -62,7 +81,7 @@ var GameScene = /** @class */ (function (_super) {
                 // Mark the tile that the player clicks on (will automatically unmark if it's marked already)
                 this.board.markTile(gridPosClick.x, gridPosClick.y);
                 // Update the amount of mines depending how many tiles are marked
-                this.ui.updateMinesAmount(this.board.minesAmount - this.board.markedAmount);
+                this.uiManager.hud.updateMinesAmount(this.board.minesAmount - this.board.markedAmount);
             }
             // If the left button is down, reveal the tile
             else {
@@ -72,10 +91,12 @@ var GameScene = /** @class */ (function (_super) {
                 if (!revealedTile.isMarked && revealedTile.containsMine) {
                     // Show the player where all the mines are
                     this.board.showAllMines();
-                    // Tell the board that it's game over
-                    this.board.changeState(BoardStates.GameOver);
+                    // Make the board inactive
+                    this.board.changeState(BoardStates.Inactive);
                     // Stop the timer
                     this.timerIsRunning = false;
+                    // Show the game over end screen
+                    this.uiManager.endScreen.showEndScreen(false);
                 }
             }
         }, this);
@@ -93,14 +114,15 @@ var GameScene = /** @class */ (function (_super) {
             this.gameEnded = true;
             // Show the player where all the mines are by marking them
             this.board.markAllMines();
-            // Update the UI
-            this.ui.updateMinesAmount(0);
+            // Update the HUD and show the win screen
+            this.uiManager.hud.updateMinesAmount(0);
+            this.uiManager.endScreen.showEndScreen(true);
         }
         else if (this.timerIsRunning && this.secondsPassed < MAX_TIME) {
-            // When the next second has passed, update it in the UI
+            // When the next second has passed, update it in the HUD
             this.timer += elapsedMiliseconds;
             if (this.timer > (this.secondsPassed + 1) * 1000) {
-                this.ui.updateTime(this.secondsPassed++);
+                this.uiManager.hud.updateTime(this.secondsPassed++);
             }
         }
     };
@@ -116,81 +138,19 @@ var config = {
     scene: [GameScene]
 };
 var game = new Phaser.Game(config);
-var DIGIT_AMOUNT = 3;
-var MINUS_SIGN_FRAME = 11;
-var UI = /** @class */ (function () {
-    function UI(scene, posX, posY, width) {
-        this.position = new Phaser.Geom.Point(posX, posY);
-        // Place the mines counter on the left
-        this.minesDigitsSprites = this.createSpriteDigits(scene, this.position);
-        this.updateMinesAmount(0);
-        // Place the timer on the right
-        var rightPos = new Phaser.Geom.Point(posX + width - TIMER_FONT_WIDTH * DIGIT_AMOUNT, posY);
-        this.timeDigitsSprites = this.createSpriteDigits(scene, rightPos);
-        this.updateTime(0);
-    }
-    // Creates an array of sprites as digits
-    UI.prototype.createSpriteDigits = function (scene, pos, digitAmoount) {
-        if (digitAmoount === void 0) { digitAmoount = DIGIT_AMOUNT; }
-        var digitSprites = [];
-        // Add each digit as a sprite from right to left
-        for (var i = digitAmoount - 1; i >= 0; i--) {
-            var len = digitSprites.push(scene.add.sprite(pos.x + i * TIMER_FONT_WIDTH, pos.y, 'timer_font_sheet'));
-            digitSprites[len - 1].setOrigin(0, 0);
-        }
-        return digitSprites;
-    };
-    UI.prototype.updateMinesAmount = function (marks) {
-        this.updateSpriteDigits(this.minesDigitsSprites, marks);
-    };
-    UI.prototype.updateTime = function (time) {
-        this.updateSpriteDigits(this.timeDigitsSprites, time);
-    };
-    // Update the digit sprites so that it matches a number
-    UI.prototype.updateSpriteDigits = function (digitSprites, num) {
-        // Check if it's a minus number and calculate where the minus sign should be placed
-        var minusSign = -1;
-        if (num < 0) {
-            minusSign = num.toString().length - 1;
-            num *= -1;
-        }
-        // Keep track of the highest digit
-        var highestDigit = 0;
-        for (var i = digitSprites.length - 1; i >= 0; i--) {
-            // Ignore the calculation if a minus sign needs to be placed
-            if (i == minusSign) {
-                digitSprites[i].setFrame(MINUS_SIGN_FRAME);
-                continue;
-            }
-            // Calculate the current digit
-            var powOfTen = Math.pow(10, i);
-            var digit = Math.floor(num / powOfTen);
-            // Show the 'off' digit instead of a 0 when the number doesn't have enough digits (so that 99 doesn't show as 099)
-            var frame = digit == 0 && highestDigit == 0 && i != 0 ? 0 : digit + 1;
-            // Show the correct digit
-            digitSprites[i].setFrame(frame);
-            // Remove the digit from the number so it won't mess up the calculation
-            num -= digit * powOfTen;
-            // Update the highest digit
-            if (digit > highestDigit)
-                highestDigit = digit;
-        }
-    };
-    return UI;
-}());
 var BoardStates;
 (function (BoardStates) {
-    BoardStates[BoardStates["Normal"] = 0] = "Normal";
+    BoardStates[BoardStates["Active"] = 0] = "Active";
     BoardStates[BoardStates["AutoRevealing"] = 1] = "AutoRevealing";
-    BoardStates[BoardStates["GameOver"] = 2] = "GameOver";
+    BoardStates[BoardStates["Inactive"] = 2] = "Inactive";
 })(BoardStates || (BoardStates = {}));
 var Board = /** @class */ (function () {
     function Board(scene, gridWidth, gridHeight) {
-        this.state = BoardStates.Normal;
+        this.state = BoardStates.Active;
         this.autoRevealingInterval = 132; // Miliseconds
         this.autoRevealingTimer = 0;
         this.tilesRevealed = 0; // The amount of tiles that are revealed
-        this.markedAmount = 0;
+        this.markedAmount = 0; // The amount of tiles that are marked
         this.gridSize = new Phaser.Geom.Point(gridWidth, gridHeight);
     }
     Object.defineProperty(Board.prototype, "totalTiles", {
@@ -201,7 +161,7 @@ var Board = /** @class */ (function () {
     });
     Object.defineProperty(Board.prototype, "inputEnabled", {
         // Whether input can make changes to the board or not
-        get: function () { return this.state == BoardStates.Normal; },
+        get: function () { return this.state == BoardStates.Active; },
         enumerable: true,
         configurable: true
     });
@@ -241,6 +201,17 @@ var Board = /** @class */ (function () {
                 this.tiles[y].push(new Tile(scene, this.toScreenPosition(x, y), x, y));
             }
         }
+    };
+    Board.prototype.reset = function () {
+        for (var y = 0; y < this.gridSize.y; y++) {
+            for (var x = 0; x < this.gridSize.x; x++) {
+                this.tiles[y][x].reset();
+            }
+        }
+        this.markedAmount = 0;
+        this.tilesRevealed = 0;
+        this.placeMines(this.minesAmount);
+        this.changeState(BoardStates.Active);
     };
     Board.prototype.placeMines = function (amount) {
         var mines = 0;
@@ -296,7 +267,7 @@ var Board = /** @class */ (function () {
                 this.tilesToReveal = nextTiles;
                 // Change the state back to normal when there are no more tiles to reveal
                 if (this.tilesToReveal.length == 0) {
-                    this.changeState(BoardStates.Normal);
+                    this.changeState(BoardStates.Active);
                 }
             }
         }
@@ -460,10 +431,10 @@ var Tile = /** @class */ (function () {
             if (showPlayerMistake) {
                 this.sprite.setFrame(TileFrames.Mistake);
             }
-            this.createSprite(TileFrames.Mine);
+            this.hintSprite = this.createSprite(TileFrames.Mine);
         }
         else if (this.hintValue > 0) {
-            this.createSprite(this.hintValue - 1);
+            this.hintSprite = this.createSprite(this.hintValue - 1);
         }
     };
     Tile.prototype.setHintValue = function (value) {
@@ -489,6 +460,139 @@ var Tile = /** @class */ (function () {
         newSprite.setPosition(this.position.x, this.position.y);
         return newSprite;
     };
+    Tile.prototype.reset = function () {
+        // Unmark the tile
+        if (this.isMarked)
+            this.unMark();
+        // Destroy hint number or mine if it was shown to the player
+        this.hintValue = 0;
+        if (this.hintSprite != undefined)
+            this.hintSprite.destroy();
+        // Make the tile hidden again
+        this.isRevealed = false;
+        this.sprite.setFrame(TileFrames.Hidden);
+    };
     return Tile;
+}());
+var WIN_TEXT_WIDTH = 480;
+var WIN_TEXT_HEIGHT = 50;
+var LOSE_TEXT_WIDTH = 284;
+var LOSE_TEXT_HEIGHT = 50;
+var END_TEXT_POSITION_Y = 132;
+var EndScreen = /** @class */ (function () {
+    function EndScreen(scene) {
+        this.rectangle = scene.add.rectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0.5);
+        this.rectangle.setOrigin(0, 0);
+        this.winTextSprite = scene.add.sprite(SCREEN_WIDTH / 2, END_TEXT_POSITION_Y, 'ui');
+        this.winTextSprite.frame = new Phaser.Textures.Frame(this.winTextSprite.texture, 'wintext', 0, 0, 0, WIN_TEXT_WIDTH, WIN_TEXT_HEIGHT);
+        this.winTextSprite.setSizeToFrame(this.winTextSprite.frame);
+        this.winTextSprite.setOrigin(0.5, 0.5);
+        this.loseTextSprite = scene.add.sprite(SCREEN_WIDTH / 2, END_TEXT_POSITION_Y, 'ui');
+        this.loseTextSprite.frame = new Phaser.Textures.Frame(this.loseTextSprite.texture, 'wintext', 0, 100, 50, LOSE_TEXT_WIDTH, LOSE_TEXT_HEIGHT);
+        this.loseTextSprite.setSizeToFrame(this.loseTextSprite.frame);
+        this.loseTextSprite.setOrigin(0.5, 0.5);
+        this.hideEndScreen();
+    }
+    Object.defineProperty(EndScreen.prototype, "isVisible", {
+        get: function () { return this.rectangle.visible; },
+        enumerable: true,
+        configurable: true
+    });
+    EndScreen.prototype.showEndScreen = function (won) {
+        // Show the correct text
+        var textSprite = won ? this.winTextSprite : this.loseTextSprite;
+        textSprite.setVisible(true);
+        // Make the background rectangle visible
+        this.rectangle.setVisible(true);
+    };
+    EndScreen.prototype.hideEndScreen = function () {
+        this.winTextSprite.setVisible(false);
+        this.loseTextSprite.setVisible(false);
+        this.rectangle.setVisible(false);
+    };
+    return EndScreen;
+}());
+var DIGIT_AMOUNT = 3;
+var MINUS_SIGN_FRAME = 11;
+var HUD = /** @class */ (function () {
+    function HUD(scene, posX, posY, width) {
+        this.position = new Phaser.Geom.Point(posX, posY);
+        // Place the mines counter on the left
+        this.minesDigitsSprites = this.createSpriteDigits(scene, this.position);
+        this.updateMinesAmount(0);
+        // Place the timer on the right
+        var rightPos = new Phaser.Geom.Point(posX + width - TIMER_FONT_WIDTH * DIGIT_AMOUNT, posY);
+        this.timeDigitsSprites = this.createSpriteDigits(scene, rightPos);
+        this.updateTime(0);
+    }
+    // Creates an array of sprites as digits
+    HUD.prototype.createSpriteDigits = function (scene, pos, digitAmoount) {
+        if (digitAmoount === void 0) { digitAmoount = DIGIT_AMOUNT; }
+        var digitSprites = [];
+        // Add each digit as a sprite from right to left
+        for (var i = digitAmoount - 1; i >= 0; i--) {
+            var len = digitSprites.push(scene.add.sprite(pos.x + i * TIMER_FONT_WIDTH, pos.y, 'timer_font_sheet'));
+            digitSprites[len - 1].setOrigin(0, 0);
+        }
+        return digitSprites;
+    };
+    HUD.prototype.updateMinesAmount = function (marks) {
+        this.updateSpriteDigits(this.minesDigitsSprites, marks);
+    };
+    HUD.prototype.updateTime = function (time) {
+        this.updateSpriteDigits(this.timeDigitsSprites, time);
+    };
+    // Update the digit sprites so that it matches a number
+    HUD.prototype.updateSpriteDigits = function (digitSprites, num) {
+        // Check if it's a minus number and calculate where the minus sign should be placed
+        var minusSign = -1;
+        if (num < 0) {
+            minusSign = num.toString().length - 1;
+            num *= -1;
+        }
+        // Keep track of the highest digit
+        var highestDigit = 0;
+        for (var i = digitSprites.length - 1; i >= 0; i--) {
+            // Ignore the calculation if a minus sign needs to be placed
+            if (i == minusSign) {
+                digitSprites[i].setFrame(MINUS_SIGN_FRAME);
+                continue;
+            }
+            // Calculate the current digit
+            var powOfTen = Math.pow(10, i);
+            var digit = Math.floor(num / powOfTen);
+            // Show the 'off' digit instead of a 0 when the number doesn't have enough digits (so that 99 doesn't show as 099)
+            var frame = digit == 0 && highestDigit == 0 && i != 0 ? 0 : digit + 1;
+            // Show the correct digit
+            digitSprites[i].setFrame(frame);
+            // Remove the digit from the number so it won't mess up the calculation
+            num -= digit * powOfTen;
+            // Update the highest digit
+            if (digit > highestDigit)
+                highestDigit = digit;
+        }
+    };
+    return HUD;
+}());
+var RESTART_BUTTON_SIZE = 100;
+var Menu = /** @class */ (function () {
+    function Menu(scene) {
+        this.resetButtonSprite = scene.add.sprite(SCREEN_WIDTH - BOARD_POSITION_X - RESTART_BUTTON_SIZE, SCREEN_HEIGHT - RESTART_BUTTON_SIZE - BOARD_POSITION_X, 'ui');
+        this.resetButtonSprite.frame = new Phaser.Textures.Frame(this.resetButtonSprite.texture, 'resetbutton', 0, 0, 50, RESTART_BUTTON_SIZE, RESTART_BUTTON_SIZE);
+        this.resetButtonSprite.setOrigin(0, 0);
+    }
+    Menu.prototype.addRestartEvent = function (event) {
+        this.resetButtonSprite.setInteractive();
+        this.resetButtonSprite.on('pointerdown', event);
+    };
+    return Menu;
+}());
+var UIManager = /** @class */ (function () {
+    function UIManager(scene) {
+        this.endScreen = new EndScreen(scene);
+        this.menu = new Menu(scene);
+        this.hud = new HUD(scene, BOARD_POSITION_X, BOARD_POSITION_X, BOARD_WIDTH);
+    }
+    return UIManager;
 }());
 //# sourceMappingURL=game.js.map
