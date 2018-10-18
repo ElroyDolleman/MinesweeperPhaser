@@ -20,6 +20,13 @@ var MAX_TIME = 999;
 var MAX_BOARD_ROWS = 9;
 var BOARD_WIDTH = (MAX_BOARD_ROWS * CELL_SIZE);
 var BOARD_POSITION_X = SCREEN_WIDTH / 2 - BOARD_WIDTH / 2;
+// The amount of time the touch needs to be held down to mark a tile instead of revealing it in miliseconds
+var HOLD_TIME_TO_MARK = 300;
+var InputActions;
+(function (InputActions) {
+    InputActions[InputActions["Reveal"] = 0] = "Reveal";
+    InputActions[InputActions["Mark"] = 1] = "Mark";
+})(InputActions || (InputActions = {}));
 var GameScene = /** @class */ (function (_super) {
     __extends(GameScene, _super);
     function GameScene() {
@@ -27,6 +34,8 @@ var GameScene = /** @class */ (function (_super) {
         _this.timer = 0;
         _this.secondsPassed = 0;
         _this.timerIsRunning = false;
+        _this.touchDownTime = 0;
+        _this.disableHeldDown = false;
         _this.gameEnded = false;
         return _this;
     }
@@ -61,47 +70,99 @@ var GameScene = /** @class */ (function (_super) {
         this.uiManager.menu.addRestartEvent(function () {
             scene.reset();
         });
-        // The input event for clicking on the screen
-        this.input.on('pointerdown', function (pointer) {
-            // If the board is a state that disables input, end this function
-            if (!this.board.inputEnabled) {
+    };
+    GameScene.prototype.revealAction = function (tileLocationToReveal) {
+        // Reveal the tile that was clicked
+        var revealedTile = this.board.revealTile(tileLocationToReveal.x, tileLocationToReveal.y);
+        // When the revealed tile has a mine, it's game over
+        if (!revealedTile.isMarked && revealedTile.containsMine) {
+            // Show the player where all the mines are
+            this.board.showAllMines();
+            // Make the board inactive
+            this.board.changeState(BoardStates.Inactive);
+            // Stop the timer
+            this.timerIsRunning = false;
+            // Show the game over end screen
+            this.uiManager.endScreen.showEndScreen(false);
+        }
+        // Start the timer if it has not started yet
+        if (!this.timerIsRunning)
+            this.timerIsRunning = true;
+    };
+    GameScene.prototype.markAction = function (tileLocationToMark) {
+        // Mark the tile that the player clicks on (will automatically unmark if it's marked already)
+        this.board.markTile(tileLocationToMark.x, tileLocationToMark.y);
+        // Update the amount of mines depending how many tiles are marked
+        this.uiManager.hud.updateMinesAmount(this.board.minesAmount - this.board.markedAmount);
+        // Start the timer if it has not started yet
+        if (!this.timerIsRunning)
+            this.timerIsRunning = true;
+    };
+    GameScene.prototype.boardInputUpdate = function () {
+        // If the board is not interactive, cancel the function to prevent unecessary input checks
+        if (!this.board.isInteractive)
+            return;
+        if (this.input.activePointer.isDown && !this.disableHeldDown) {
+            // Calculate the grid location that was clicked and select that tile
+            var gridPosClick = this.board.toGridPosition(this.input.activePointer.x, this.input.activePointer.y);
+            var newTileWasSelected = this.board.selectTile(gridPosClick.x, gridPosClick.y);
+            if (this.input.activePointer.wasTouch) {
+                // If there was no new tile selected, count how long the current tile was held down
+                if (!newTileWasSelected) {
+                    this.touchDownTime += 1000 / 60;
+                    if (this.touchDownTime >= HOLD_TIME_TO_MARK) {
+                        this.touchDownTime = 0;
+                        this.board.unselectCurrentTile();
+                        // Fire the reveal action
+                        this.markAction(this.getGridPointerLocation(this.input.activePointer));
+                        // Make sure that holding down longer won't fire any functions anymore
+                        this.disableHeldDown = true;
+                    }
+                }
+                // Reset the timer whenever a different tile is selected
+                else
+                    this.touchDownTime = 0;
+            }
+        }
+        else if (this.input.activePointer.justUp) {
+            // Unselect the currently selected tile
+            this.board.unselectCurrentTile();
+            // Reset the amount of time a touch input was held down
+            this.touchDownTime = 0;
+            // If the held down was disabled, enable it and cancle the up input
+            if (this.disableHeldDown) {
+                this.disableHeldDown = false;
+                return;
+            }
+            if (this.input.activePointer.rightButtonDown()) {
+                // Calculate the grid location that was clicked
+                var gridPosClick = this.getGridPointerLocation(this.input.activePointer);
+                // Select the tile to give the player feedback which tile it is going to reveal
+                if (gridPosClick != null) {
+                    this.markAction(gridPosClick);
+                }
+                // Cancel the function so that the reveal action won't fire
                 return;
             }
             // Calculate the grid location that was clicked
-            var gridPosClick = this.board.toGridPosition(pointer.x, pointer.y);
-            // If the click was not on the board, cancle the function
-            if (!this.board.containsTile(gridPosClick.x, gridPosClick.y)) {
-                return;
+            var gridPosClick = this.getGridPointerLocation(this.input.activePointer);
+            // Select the tile to give the player feedback which tile it is going to reveal
+            if (gridPosClick != null) {
+                this.revealAction(gridPosClick);
             }
-            // Start the timer if it has not started yet
-            if (!this.timerIsRunning)
-                this.timerIsRunning = true;
-            // If the right button is down, mark the tile instead of revealing it
-            if (pointer.rightButtonDown()) {
-                // Mark the tile that the player clicks on (will automatically unmark if it's marked already)
-                this.board.markTile(gridPosClick.x, gridPosClick.y);
-                // Update the amount of mines depending how many tiles are marked
-                this.uiManager.hud.updateMinesAmount(this.board.minesAmount - this.board.markedAmount);
-            }
-            // If the left button is down, reveal the tile
-            else {
-                // Reveal the tile that was clicked
-                var revealedTile = this.board.revealTile(gridPosClick.x, gridPosClick.y);
-                // When the revealed tile has a mine, it's game over
-                if (!revealedTile.isMarked && revealedTile.containsMine) {
-                    // Show the player where all the mines are
-                    this.board.showAllMines();
-                    // Make the board inactive
-                    this.board.changeState(BoardStates.Inactive);
-                    // Stop the timer
-                    this.timerIsRunning = false;
-                    // Show the game over end screen
-                    this.uiManager.endScreen.showEndScreen(false);
-                }
-            }
-        }, this);
+        }
+    };
+    GameScene.prototype.getGridPointerLocation = function (pointer) {
+        // Calculate the grid location that was clicked
+        var gridPosClick = this.board.toGridPosition(pointer.x, pointer.y);
+        // Check if the click was on the board
+        if (this.board.containsTile(gridPosClick.x, gridPosClick.y)) {
+            return gridPosClick;
+        }
+        return null;
     };
     GameScene.prototype.update = function () {
+        this.boardInputUpdate();
         // Stop the update if the game ended
         if (this.gameEnded)
             return;
@@ -159,7 +220,7 @@ var Board = /** @class */ (function () {
         enumerable: true,
         configurable: true
     });
-    Object.defineProperty(Board.prototype, "inputEnabled", {
+    Object.defineProperty(Board.prototype, "isInteractive", {
         // Whether input can make changes to the board or not
         get: function () { return this.state == BoardStates.Active; },
         enumerable: true,
@@ -374,6 +435,35 @@ var Board = /** @class */ (function () {
             }
         }
     };
+    // Selects a tile to give player feedback. Returns whether a new tile was selected then previously.
+    Board.prototype.selectTile = function (x, y) {
+        // If the tile that needs to be selected is already selected, cancel the function
+        if (this.selectedTile != undefined && this.selectedTile.gridLocation.x == x && this.selectedTile.gridLocation.y == y) {
+            return false;
+        }
+        // Deselect the old tile
+        this.unselectCurrentTile();
+        // If the location is not inside the grid, no tile can be selected
+        // Return true so that the input thinks it's not holding down a tile
+        if (!this.containsTile(x, y))
+            return true;
+        // Get the new selected tile
+        this.selectedTile = this.getTile(x, y);
+        // Select the new tile if it's not revealed yet
+        if (!this.selectedTile.isRevealed) {
+            this.selectedTile.select();
+        }
+        else {
+            this.selectedTile = undefined;
+        }
+        return true;
+    };
+    Board.prototype.unselectCurrentTile = function () {
+        if (this.selectedTile != undefined) {
+            this.selectedTile.unselect();
+            this.selectedTile = undefined;
+        }
+    };
     Board.prototype.changeState = function (newState) {
         this.state = newState;
     };
@@ -392,7 +482,7 @@ var TileFrames;
     TileFrames[TileFrames["Hidden"] = 10] = "Hidden";
     TileFrames[TileFrames["Revealed"] = 11] = "Revealed";
     TileFrames[TileFrames["Mistake"] = 12] = "Mistake";
-    TileFrames[TileFrames["DebugHidden"] = 13] = "DebugHidden";
+    TileFrames[TileFrames["Selected"] = 13] = "Selected";
     TileFrames[TileFrames["Mine"] = 22] = "Mine";
     TileFrames[TileFrames["Flag"] = 20] = "Flag";
 })(TileFrames || (TileFrames = {}));
@@ -420,7 +510,13 @@ var Tile = /** @class */ (function () {
     Tile.prototype.setMine = function () {
         this.hintValue = -1;
         // Debug Code (Shows where the mines are)
-        //this.sprite.setFrame(TileFrames.DebugHidden);
+        //this.sprite.setFrame(TileFrames.Selected);
+    };
+    Tile.prototype.select = function () {
+        this.sprite.setFrame(TileFrames.Selected);
+    };
+    Tile.prototype.unselect = function () {
+        this.sprite.setFrame(TileFrames.Hidden);
     };
     Tile.prototype.reveal = function (showPlayerMistake) {
         if (showPlayerMistake === void 0) { showPlayerMistake = true; }
