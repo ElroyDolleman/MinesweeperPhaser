@@ -5,21 +5,10 @@ body {
     margin: 0;
 }
 
-@media (max-width : 487px) {
-    canvas {
-        display: block;
-        margin: 0;
-    }
-}
+canvas {
+    max-width: 480px;
+    max-height: 800px;
 
-@media (min-width : 488px) {
-    canvas {
-        display: block;
-        margin: 4px auto;
-    }
-}
-
-element.style {
-    width: 240px;
-    height: 400px;
-}
+    display: block;
+    margin: 0 auto;
+} 
