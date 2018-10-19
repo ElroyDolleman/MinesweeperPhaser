@@ -20,6 +20,7 @@ var MAX_TIME = 999;
 var MAX_BOARD_ROWS = 9;
 var BOARD_WIDTH = (MAX_BOARD_ROWS * CELL_SIZE);
 var BOARD_POSITION_X = SCREEN_WIDTH / 2 - BOARD_WIDTH / 2;
+var BOARD_DEPTH = -2;
 // The amount of time the touch needs to be held down to mark a tile instead of revealing it in miliseconds
 var HOLD_TIME_TO_MARK = 300;
 var InputActions;
@@ -27,6 +28,12 @@ var InputActions;
     InputActions[InputActions["Reveal"] = 0] = "Reveal";
     InputActions[InputActions["Mark"] = 1] = "Mark";
 })(InputActions || (InputActions = {}));
+var GameStates;
+(function (GameStates) {
+    GameStates[GameStates["Start"] = 0] = "Start";
+    GameStates[GameStates["Game"] = 1] = "Game";
+    GameStates[GameStates["End"] = 2] = "End";
+})(GameStates || (GameStates = {}));
 var GameScene = /** @class */ (function (_super) {
     __extends(GameScene, _super);
     function GameScene() {
@@ -34,11 +41,19 @@ var GameScene = /** @class */ (function (_super) {
         _this.timer = 0;
         _this.secondsPassed = 0;
         _this.timerIsRunning = false;
+        // The amount of time the player hold the touch screen
         _this.touchDownTime = 0;
+        // Used to disable any further input of holding to prevent continues actions
         _this.disableHeldDown = false;
-        _this.gameEnded = false;
+        _this.state = GameStates.Start;
         return _this;
     }
+    Object.defineProperty(GameScene.prototype, "gameEnded", {
+        get: function () { return this.state == GameStates.End; },
+        enumerable: true,
+        configurable: true
+    });
+    ;
     GameScene.prototype.preload = function () {
         // Load the spritesheet that contains all images
         this.load.spritesheet('minesweeper_sheet', 'assets/minesweeper_sheet.png', { frameWidth: CELL_SIZE, frameHeight: CELL_SIZE });
@@ -49,29 +64,53 @@ var GameScene = /** @class */ (function (_super) {
         this.timer = 0;
         this.secondsPassed = 0;
         this.timerIsRunning = false;
-        this.gameEnded = false;
         this.uiManager.hud.updateTime(0);
-        this.uiManager.hud.updateMinesAmount(this.board.minesAmount);
+        this.uiManager.hud.updateMinesAmount(0);
         this.uiManager.endScreen.hideEndScreen();
-        this.board.reset();
+        this.board.destroy();
+        this.changeState(GameStates.Start);
+        this.uiManager.menu.showMainMenu();
     };
     GameScene.prototype.create = function () {
         game.input.mouse.capture = true;
         window.addEventListener('resize', this.resize);
         this.resize();
-        // Create the board/grid
-        this.board = new Board(this, 9, 9);
-        this.board.setBoardPosition(SCREEN_WIDTH / 2 - this.board.boardWidth / 2, SCREEN_HEIGHT / 2 - this.board.boardHeight / 2);
-        this.board.createBoard(this);
-        this.board.placeMines(10);
+        this.board = new Board();
+        this.createUI();
+    };
+    GameScene.prototype.createUI = function () {
         // Initialize the UI Manager
         this.uiManager = new UIManager(this);
-        this.uiManager.hud.updateMinesAmount(this.board.minesAmount);
-        // Create a Restart Event
+        this.uiManager.hud.updateMinesAmount(0);
+        // Reference to self for callback events
         var scene = this;
+        // Easy button
+        this.uiManager.menu.createNewButton(this, function () {
+            scene.createBoard(9, 9, 10);
+        });
+        // Normal button
+        this.uiManager.menu.createNewButton(this, function () {
+            scene.createBoard(9, 9, 20);
+        });
+        // Hard button
+        this.uiManager.menu.createNewButton(this, function () {
+            scene.createBoard(9, 10, 30);
+        });
+        // Create a Restart Event
         this.uiManager.menu.addRestartEvent(function () {
             scene.reset();
         });
+        this.uiManager.menu.updateButtonLayout();
+    };
+    GameScene.prototype.createBoard = function (gridWidth, gridHeight, minesAmount) {
+        this.board.setBoardSize(gridWidth, gridHeight);
+        this.board.create(this);
+        this.board.placeMines(minesAmount);
+        this.uiManager.menu.hideMainMenu();
+        this.uiManager.hud.updateMinesAmount(this.board.minesAmount);
+        // Make sure the button click won't reveal a spot on the grid immediately
+        this.disableHeldDown = true;
+        this.changeState(GameStates.Game);
     };
     GameScene.prototype.revealAction = function (tileLocationToReveal) {
         // Reveal the tile that was clicked
@@ -86,6 +125,8 @@ var GameScene = /** @class */ (function (_super) {
             this.timerIsRunning = false;
             // Show the game over end screen
             this.uiManager.endScreen.showEndScreen(false);
+            // The player has lost the game so it ended
+            this.changeState(GameStates.End);
         }
         // Start the timer if it has not started yet
         else if (!this.timerIsRunning)
@@ -154,16 +195,11 @@ var GameScene = /** @class */ (function (_super) {
             }
         }
     };
-    GameScene.prototype.getGridPointerLocation = function (pointer) {
-        // Calculate the grid location that was clicked
-        var gridPosClick = this.board.toGridPosition(pointer.x, pointer.y);
-        // Check if the click was on the board
-        if (this.board.containsTile(gridPosClick.x, gridPosClick.y)) {
-            return gridPosClick;
-        }
-        return null;
-    };
     GameScene.prototype.update = function () {
+        if (this.state == GameStates.Game)
+            this.updateGame();
+    };
+    GameScene.prototype.updateGame = function () {
         this.boardInputUpdate();
         // Stop the update if the game ended
         if (this.gameEnded)
@@ -173,13 +209,13 @@ var GameScene = /** @class */ (function (_super) {
         // Update the board (for autorevealing)
         this.board.update(elapsedMiliseconds);
         if (this.board.allSafeTilesAreRevealed) {
-            // The player has won the game so it ended
-            this.gameEnded = true;
             // Show the player where all the mines are by marking them
             this.board.markAllMines();
             // Update the HUD and show the win screen
             this.uiManager.hud.updateMinesAmount(0);
             this.uiManager.endScreen.showEndScreen(true);
+            // The player has won the game so it ended
+            this.changeState(GameStates.End);
         }
         else if (this.timerIsRunning && this.secondsPassed < MAX_TIME) {
             // When the next second has passed, update it in the HUD
@@ -187,6 +223,31 @@ var GameScene = /** @class */ (function (_super) {
             if (this.timer > (this.secondsPassed + 1) * 1000) {
                 this.uiManager.hud.updateTime(this.secondsPassed++);
             }
+        }
+    };
+    // Converts the screen position of the pointer (mouse, touch) to a location in the grid.
+    // Returns null if the pointer is outside the grid
+    GameScene.prototype.getGridPointerLocation = function (pointer) {
+        // Calculate the grid location that was clicked
+        var gridPosClick = this.board.toGridPosition(pointer.x, pointer.y);
+        // Check if the click was on the board
+        if (this.board.containsTile(gridPosClick.x, gridPosClick.y)) {
+            return gridPosClick;
+        }
+        return null;
+    };
+    GameScene.prototype.changeState = function (newState) {
+        // Cancel the function if the state did not change
+        if (newState == this.state)
+            return;
+        this.state = newState;
+        // Show the main menu when going to the start screen
+        if (newState == GameStates.Start) {
+            this.uiManager.menu.showMainMenu();
+        }
+        // Make sure the board is behind the end menu
+        else if (newState == GameStates.End) {
+            this.board.setBoardDepth(BOARD_DEPTH);
         }
     };
     GameScene.prototype.resize = function () {
@@ -220,13 +281,15 @@ var BoardStates;
     BoardStates[BoardStates["Inactive"] = 2] = "Inactive";
 })(BoardStates || (BoardStates = {}));
 var Board = /** @class */ (function () {
-    function Board(scene, gridWidth, gridHeight) {
+    function Board() {
         this.state = BoardStates.Active;
         this.autoRevealingInterval = 132; // Miliseconds
         this.autoRevealingTimer = 0;
         this.tilesRevealed = 0; // The amount of tiles that are revealed
         this.markedAmount = 0; // The amount of tiles that are marked
-        this.gridSize = new Phaser.Geom.Point(gridWidth, gridHeight);
+        this.visible = true;
+        // Can't interact with the board until the tiles are created
+        this.changeState(BoardStates.Inactive);
     }
     Object.defineProperty(Board.prototype, "totalTiles", {
         // The total amount of tiles
@@ -236,7 +299,7 @@ var Board = /** @class */ (function () {
     });
     Object.defineProperty(Board.prototype, "isInteractive", {
         // Whether input can make changes to the board or not
-        get: function () { return this.state == BoardStates.Active; },
+        get: function () { return this.state == BoardStates.Active && this.visible; },
         enumerable: true,
         configurable: true
     });
@@ -263,19 +326,36 @@ var Board = /** @class */ (function () {
         enumerable: true,
         configurable: true
     });
+    Board.prototype.setBoardSize = function (gridWidth, gridHeight) {
+        this.gridSize = new Phaser.Geom.Point(gridWidth, gridHeight);
+    };
     Board.prototype.setBoardPosition = function (x, y) {
         this.boardPosition = new Phaser.Geom.Point(x, y);
     };
-    Board.prototype.createBoard = function (scene) {
+    Board.prototype.create = function (scene) {
+        // Destroy the already existing sprites
+        if (this.tileGroup != null) {
+            this.tileGroup.clear(true, true);
+            this.tileGroup.destroy();
+            this.tileGroup = null;
+        }
+        // Create a new group for adding all the tile sprites (makes it easier to hide and destroy everything at once)
+        this.tileGroup = scene.add.group();
+        // Empty the array
         this.tiles = [];
+        // Set the board on the correct position
+        this.setBoardPosition(SCREEN_WIDTH / 2 - this.boardWidth / 2, SCREEN_HEIGHT / 2 - this.boardHeight / 2);
+        // Create a new 2d array of tiles
         for (var y = 0; y < this.gridSize.y; y++) {
             // Add a new row
             this.tiles.push([]);
             for (var x = 0; x < this.gridSize.x; x++) {
                 // Add a new tile on each grid cell
-                this.tiles[y].push(new Tile(scene, this.toScreenPosition(x, y), x, y));
+                this.tiles[y].push(new Tile(scene, this.tileGroup, this.toScreenPosition(x, y), x, y));
             }
         }
+        // The board is now active since it's created
+        this.changeState(BoardStates.Active);
     };
     Board.prototype.reset = function () {
         for (var y = 0; y < this.gridSize.y; y++) {
@@ -287,6 +367,17 @@ var Board = /** @class */ (function () {
         this.tilesRevealed = 0;
         this.placeMines(this.minesAmount);
         this.changeState(BoardStates.Active);
+    };
+    Board.prototype.destroy = function () {
+        // Destroy the already existing sprites
+        if (this.tileGroup != null) {
+            this.tileGroup.clear(true, true);
+            this.tileGroup.destroy();
+            this.tileGroup = null;
+        }
+        this.markedAmount = 0;
+        this.tilesRevealed = 0;
+        this.minesAmount = 0;
     };
     Board.prototype.placeMines = function (amount) {
         var mines = 0;
@@ -481,6 +572,21 @@ var Board = /** @class */ (function () {
     Board.prototype.changeState = function (newState) {
         this.state = newState;
     };
+    Board.prototype.toggleVisible = function () {
+        this.tileGroup.toggleVisible();
+    };
+    // Changes the depth of the board so it can be put behind other sprite such as menus
+    Board.prototype.setBoardDepth = function (depth) {
+        this.tileGroup.setDepth(depth, 0);
+        // Make sure that the marks are on top
+        for (var y = 0; y < this.gridSize.y; y++) {
+            for (var x = 0; x < this.gridSize.x; x++) {
+                if (this.tiles[y][x].isMarked) {
+                    this.tiles[y][x].markSprite.setDepth(depth + 1);
+                }
+            }
+        }
+    };
     // Converts a screen position to a location in the grid
     Board.prototype.toGridPosition = function (screenPosX, screenPosY) {
         return new Phaser.Geom.Point(Math.floor((screenPosX - this.boardPosition.x) / CELL_SIZE), Math.floor((screenPosY - this.boardPosition.y) / CELL_SIZE));
@@ -501,11 +607,12 @@ var TileFrames;
     TileFrames[TileFrames["Flag"] = 20] = "Flag";
 })(TileFrames || (TileFrames = {}));
 var Tile = /** @class */ (function () {
-    function Tile(scene, position, gridLocationX, gridLocationY) {
+    function Tile(scene, group, position, gridLocationX, gridLocationY) {
         this.hintValue = 0;
         this.isRevealed = false;
         this.isMarked = false;
         this.scene = scene;
+        this.group = group;
         // Create new sprite based on the spritesheet
         this.sprite = scene.add.sprite(0, 0, 'minesweeper_sheet');
         this.sprite.setOrigin(0, 0);
@@ -514,9 +621,11 @@ var Tile = /** @class */ (function () {
         // Set the position based on the grid location
         this.sprite.setPosition(position.x, position.y);
         this.position = position;
+        this.group.add(this.sprite);
         this.gridLocation = new Phaser.Geom.Point(gridLocationX, gridLocationY);
     }
     Object.defineProperty(Tile.prototype, "containsMine", {
+        // Whether this tile has a mine or not
         get: function () { return this.hintValue == -1; },
         enumerable: true,
         configurable: true
@@ -568,6 +677,7 @@ var Tile = /** @class */ (function () {
         newSprite.setFrame(frame);
         newSprite.setOrigin(0, 0);
         newSprite.setPosition(this.position.x, this.position.y);
+        this.group.add(newSprite);
         return newSprite;
     };
     Tile.prototype.reset = function () {
@@ -685,15 +795,56 @@ var HUD = /** @class */ (function () {
     return HUD;
 }());
 var RESTART_BUTTON_SIZE = 100;
+var BUTTON_WIDTH = 250;
+var BUTTON_HEIGHT = 80;
+var BUTTON_TEXTURE_POS_Y = 150;
+var BUTTON_MARGIN = 4;
 var Menu = /** @class */ (function () {
     function Menu(scene) {
         this.resetButtonSprite = scene.add.sprite(SCREEN_WIDTH - BOARD_POSITION_X - RESTART_BUTTON_SIZE, SCREEN_HEIGHT - RESTART_BUTTON_SIZE - BOARD_POSITION_X, 'ui');
         this.resetButtonSprite.frame = new Phaser.Textures.Frame(this.resetButtonSprite.texture, 'resetbutton', 0, 0, 50, RESTART_BUTTON_SIZE, RESTART_BUTTON_SIZE);
+        this.resetButtonSprite.setSizeToFrame(this.resetButtonSprite.frame);
         this.resetButtonSprite.setOrigin(0, 0);
+        this.resetButtonSprite.setVisible(false);
+        this.rectangle = scene.add.rectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0.5);
+        this.rectangle.setOrigin(0, 0);
+        this.mainMenuButtons = [];
     }
-    Menu.prototype.addRestartEvent = function (event) {
+    Menu.prototype.createNewButton = function (scene, callback) {
+        var index = this.mainMenuButtons.length;
+        var button = scene.add.sprite(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, 'ui');
+        button.frame = new Phaser.Textures.Frame(button.texture, 'button' + index, 0, 0, BUTTON_TEXTURE_POS_Y + index * BUTTON_HEIGHT, BUTTON_WIDTH, BUTTON_HEIGHT);
+        button.setSizeToFrame(button.frame);
+        button.setOrigin(0.5, 0.5);
+        button.setInteractive();
+        button.on('pointerdown', callback);
+        this.mainMenuButtons.push(button);
+    };
+    Menu.prototype.updateButtonLayout = function () {
+        var length = this.mainMenuButtons.length;
+        var buttonHeight = (BUTTON_HEIGHT + BUTTON_MARGIN * 2);
+        var totalHeight = length * buttonHeight;
+        for (var i = 0; i < length; i++) {
+            this.mainMenuButtons[i].setPosition(SCREEN_WIDTH / 2, BUTTON_HEIGHT / 2 + ((SCREEN_HEIGHT / 2) - (totalHeight / 2) + (i * buttonHeight)));
+        }
+    };
+    Menu.prototype.addRestartEvent = function (callback) {
         this.resetButtonSprite.setInteractive();
-        this.resetButtonSprite.on('pointerdown', event);
+        this.resetButtonSprite.on('pointerdown', callback);
+    };
+    Menu.prototype.showMainMenu = function () {
+        this.rectangle.setVisible(true);
+        this.mainMenuButtons.forEach(function (button) {
+            button.setVisible(true);
+        });
+        this.resetButtonSprite.setVisible(false);
+    };
+    Menu.prototype.hideMainMenu = function () {
+        this.rectangle.setVisible(false);
+        this.mainMenuButtons.forEach(function (button) {
+            button.setVisible(false);
+        });
+        this.resetButtonSprite.setVisible(true);
     };
     return Menu;
 }());
