@@ -9,6 +9,8 @@ const MAX_BOARD_ROWS: number = 9;
 const BOARD_WIDTH: number = (MAX_BOARD_ROWS * CELL_SIZE);
 const BOARD_POSITION_X: number = SCREEN_WIDTH / 2 - BOARD_WIDTH / 2;
 
+const BOARD_DEPTH: number = -2;
+
 // The amount of time the touch needs to be held down to mark a tile instead of revealing it in miliseconds
 const HOLD_TIME_TO_MARK: number = 300;
 
@@ -16,6 +18,13 @@ enum InputActions
 {
     Reveal,
     Mark
+}
+
+enum GameStates
+{
+    Start,
+    Game,
+    End
 }
 
 class GameScene extends Phaser.Scene
@@ -27,10 +36,14 @@ class GameScene extends Phaser.Scene
     secondsPassed: number = 0;
     timerIsRunning: boolean = false;
 
+    // The amount of time the player hold the touch screen
     touchDownTime: number = 0;
+    // Used to disable any further input of holding to prevent continues actions
     disableHeldDown: boolean = false;
 
-    gameEnded: boolean = false;
+    state: GameStates = GameStates.Start;
+
+    get gameEnded(): boolean { return this.state == GameStates.End; };
 
     constructor()
     {
@@ -50,13 +63,15 @@ class GameScene extends Phaser.Scene
        this.timer = 0;
        this.secondsPassed = 0;
        this.timerIsRunning = false;
-       this.gameEnded = false;
 
        this.uiManager.hud.updateTime(0);
-       this.uiManager.hud.updateMinesAmount(this.board.minesAmount);
+       this.uiManager.hud.updateMinesAmount(0);
        this.uiManager.endScreen.hideEndScreen();
 
-       this.board.reset();
+       this.board.destroy();
+
+       this.changeState(GameStates.Start);
+       this.uiManager.menu.showMainMenu();
     }
 
     create()
@@ -66,21 +81,56 @@ class GameScene extends Phaser.Scene
         window.addEventListener('resize', this.resize);
         this.resize();
 
-        // Create the board/grid
-        this.board = new Board(this, 9, 9);
-        this.board.setBoardPosition(SCREEN_WIDTH / 2 - this.board.boardWidth / 2, SCREEN_HEIGHT / 2 - this.board.boardHeight / 2);
-        this.board.createBoard(this);
-        this.board.placeMines(10);
+        this.board = new Board();
 
+        this.createUI();
+    }
+
+    createUI()
+    {
         // Initialize the UI Manager
         this.uiManager = new UIManager(this);
-        this.uiManager.hud.updateMinesAmount(this.board.minesAmount);
+        this.uiManager.hud.updateMinesAmount(0);
+
+        // Reference to self for callback events
+        let scene = this;
+
+        // Easy button
+        this.uiManager.menu.createNewButton(this, function()  {
+            scene.createBoard(9, 9, 10);
+        });
+
+        // Normal button
+        this.uiManager.menu.createNewButton(this, function()  {
+            scene.createBoard(9, 9, 20);
+        });
+
+        // Hard button
+        this.uiManager.menu.createNewButton(this, function()  {
+            scene.createBoard(9, 10, 30);
+        });
 
         // Create a Restart Event
-        let scene = this;
         this.uiManager.menu.addRestartEvent(function() {
             scene.reset();
         });
+
+        this.uiManager.menu.updateButtonLayout();
+    }
+
+    createBoard(gridWidth: number, gridHeight: number, minesAmount: number)
+    {
+        this.board.setBoardSize(gridWidth, gridHeight)
+        this.board.create(this);
+        this.board.placeMines(minesAmount);
+
+        this.uiManager.menu.hideMainMenu();
+        this.uiManager.hud.updateMinesAmount(this.board.minesAmount);
+
+        // Make sure the button click won't reveal a spot on the grid immediately
+        this.disableHeldDown = true;
+
+        this.changeState(GameStates.Game);
     }
 
     revealAction(tileLocationToReveal: Phaser.Geom.Point)
@@ -102,6 +152,9 @@ class GameScene extends Phaser.Scene
 
             // Show the game over end screen
             this.uiManager.endScreen.showEndScreen(false);
+
+            // The player has lost the game so it ended
+            this.changeState(GameStates.End);
         }
 
         // Start the timer if it has not started yet
@@ -195,20 +248,12 @@ class GameScene extends Phaser.Scene
         }
     }
 
-    getGridPointerLocation(pointer: Phaser.Input.Pointer)
+    update()
     {
-        // Calculate the grid location that was clicked
-        var gridPosClick = this.board.toGridPosition(pointer.x, pointer.y);
-
-        // Check if the click was on the board
-        if (this.board.containsTile(gridPosClick.x, gridPosClick.y))
-        {
-            return gridPosClick;
-        }
-        return null;
+        if (this.state == GameStates.Game) this.updateGame();
     }
 
-    update()
+    updateGame()
     {
         this.boardInputUpdate();
 
@@ -223,15 +268,15 @@ class GameScene extends Phaser.Scene
 
         if (this.board.allSafeTilesAreRevealed)
         {
-            // The player has won the game so it ended
-            this.gameEnded = true;
-
             // Show the player where all the mines are by marking them
             this.board.markAllMines();
 
             // Update the HUD and show the win screen
             this.uiManager.hud.updateMinesAmount(0);
             this.uiManager.endScreen.showEndScreen(true);
+
+            // The player has won the game so it ended
+            this.changeState(GameStates.End);
         }
         else if (this.timerIsRunning && this.secondsPassed < MAX_TIME)
         {
@@ -241,6 +286,40 @@ class GameScene extends Phaser.Scene
             {
                 this.uiManager.hud.updateTime(this.secondsPassed++);
             }
+        }
+    }
+
+    // Converts the screen position of the pointer (mouse, touch) to a location in the grid.
+    // Returns null if the pointer is outside the grid
+    getGridPointerLocation(pointer: Phaser.Input.Pointer)
+    {
+        // Calculate the grid location that was clicked
+        var gridPosClick = this.board.toGridPosition(pointer.x, pointer.y);
+
+        // Check if the click was on the board
+        if (this.board.containsTile(gridPosClick.x, gridPosClick.y))
+        {
+            return gridPosClick;
+        }
+        return null;
+    }
+
+    changeState(newState: GameStates)
+    {
+        // Cancel the function if the state did not change
+        if (newState == this.state) return;
+
+        this.state = newState;
+
+        // Show the main menu when going to the start screen
+        if (newState == GameStates.Start)
+        {
+            this.uiManager.menu.showMainMenu();
+        }
+        // Make sure the board is behind the end menu
+        else if (newState == GameStates.End)
+        {
+            this.board.setBoardDepth(BOARD_DEPTH);
         }
     }
 

@@ -18,24 +18,38 @@ class Board
     selectedTile: Tile; // The tile that is currently selected
     tiles: Array<Array<Tile>>; // The tiles stored in a 2D array
     tilesToReveal: Array<Tile>; // The tiles that are pending reveal (this is used for chains of zeros)
+    tileGroup: Phaser.GameObjects.Group; // All sprites from the tiles will be put in this group
     
     tilesRevealed: number = 0; // The amount of tiles that are revealed
     minesAmount: number; // The amount of mines that the board has
     markedAmount: number = 0; // The amount of tiles that are marked
 
+    private visible: boolean = true;
+
     // The total amount of tiles
     get totalTiles(): number { return this.gridSize.x * this.gridSize.y; }
+
     // Whether input can make changes to the board or not
-    get isInteractive(): boolean { return this.state == BoardStates.Active; }
+    get isInteractive(): boolean { return this.state == BoardStates.Active && this.visible; }
+
     // The width and height of the board in pixels
     get boardWidth(): number { return this.gridSize.x * CELL_SIZE; }
     get boardHeight(): number { return this.gridSize.y * CELL_SIZE; }
+
     // The amount of tiles that are still unrevealed
     get unrevealedTiles(): number { return this.totalTiles - this.tilesRevealed; }
+
     // Whether all the tiles that are not mines are revealed
     get allSafeTilesAreRevealed(): boolean { return this.unrevealedTiles == this.minesAmount; }
 
-    constructor(scene: Phaser.Scene, gridWidth: number, gridHeight: number)
+
+    constructor()
+    {
+        // Can't interact with the board until the tiles are created
+        this.changeState(BoardStates.Inactive);
+    }
+
+    setBoardSize(gridWidth: number, gridHeight: number)
     {
         this.gridSize = new Phaser.Geom.Point(gridWidth, gridHeight);
     }
@@ -45,10 +59,26 @@ class Board
         this.boardPosition = new Phaser.Geom.Point(x, y);
     }
 
-    createBoard(scene: Phaser.Scene)
+    create(scene: Phaser.Scene)
     {
+        // Destroy the already existing sprites
+        if (this.tileGroup != null)
+        {
+            this.tileGroup.clear(true, true);
+            this.tileGroup.destroy();
+            this.tileGroup = null;
+        }
+
+        // Create a new group for adding all the tile sprites (makes it easier to hide and destroy everything at once)
+        this.tileGroup = scene.add.group();
+
+        // Empty the array
         this.tiles = [];
 
+        // Set the board on the correct position
+        this.setBoardPosition(SCREEN_WIDTH / 2 - this.boardWidth / 2, SCREEN_HEIGHT / 2 - this.boardHeight / 2);
+
+        // Create a new 2d array of tiles
         for (var y = 0; y < this.gridSize.y; y++)
         {
             // Add a new row
@@ -57,9 +87,12 @@ class Board
             for (var x = 0; x < this.gridSize.x; x++)
             {
                 // Add a new tile on each grid cell
-                this.tiles[y].push(new Tile(scene, this.toScreenPosition(x, y), x, y));
+                this.tiles[y].push(new Tile(scene, this.tileGroup, this.toScreenPosition(x, y), x, y));
             }
         }
+
+        // The board is now active since it's created
+        this.changeState(BoardStates.Active);
     }
 
     reset()
@@ -77,6 +110,21 @@ class Board
         this.placeMines(this.minesAmount);
 
         this.changeState(BoardStates.Active);
+    }
+
+    destroy()
+    {
+        // Destroy the already existing sprites
+        if (this.tileGroup != null)
+        {
+            this.tileGroup.clear(true, true);
+            this.tileGroup.destroy();
+            this.tileGroup = null;
+        }
+
+        this.markedAmount = 0;
+        this.tilesRevealed = 0;
+        this.minesAmount = 0;
     }
 
     placeMines(amount: number)
@@ -251,7 +299,7 @@ class Board
             }
         }
 
-        return mines;
+        return mines;        
     }
 
     getAdjacentTile(tile: Tile, nextX: number, nextY: number): Tile
@@ -362,6 +410,29 @@ class Board
     changeState(newState: BoardStates)
     {
         this.state = newState;
+    }
+
+    toggleVisible()
+    {
+        this.tileGroup.toggleVisible();
+    }
+
+    // Changes the depth of the board so it can be put behind other sprite such as menus
+    setBoardDepth(depth: number)
+    {
+        this.tileGroup.setDepth(depth, 0);
+
+        // Make sure that the marks are on top
+        for (var y = 0; y < this.gridSize.y; y++)
+        {
+            for (var x = 0; x < this.gridSize.x; x++)
+            {
+                if (this.tiles[y][x].isMarked)
+                {
+                    this.tiles[y][x].markSprite.setDepth(depth + 1);
+                }
+            }
+        }
     }
 
     // Converts a screen position to a location in the grid

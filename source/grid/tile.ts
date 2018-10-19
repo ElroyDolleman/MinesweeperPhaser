@@ -11,10 +11,11 @@ enum TileFrames
 class Tile
 {
     scene: Phaser.Scene;
+    group: Phaser.GameObjects.Group;
 
-    hintSprite: Phaser.GameObjects.Sprite;
-    markSprite: Phaser.GameObjects.Sprite;
-    sprite: Phaser.GameObjects.Sprite;
+    hintSprite: Phaser.GameObjects.Sprite; // The number that indicates how many mines are surrounding this tile (-1 means it's a mine)
+    markSprite: Phaser.GameObjects.Sprite; // The mark sprite that goes on top of the tile when the player marks it
+    sprite: Phaser.GameObjects.Sprite; // The regular sprite of the tile
 
     position: Phaser.Geom.Point;
     gridLocation: Phaser.Geom.Point;
@@ -23,11 +24,13 @@ class Tile
     isRevealed: boolean = false;
     isMarked: boolean = false;
 
+    // Whether this tile has a mine or not
     get containsMine(): boolean { return this.hintValue == -1; }
 
-    constructor(scene: Phaser.Scene, position: Phaser.Geom.Point, gridLocationX: number, gridLocationY: number)
+    constructor(scene: Phaser.Scene, group: Phaser.GameObjects.Group, position: Phaser.Geom.Point, gridLocationX: number, gridLocationY: number)
     {
         this.scene = scene;
+        this.group = group;
 
         // Create new sprite based on the spritesheet
         this.sprite = scene.add.sprite(0, 0, 'minesweeper_sheet');
@@ -39,6 +42,8 @@ class Tile
         // Set the position based on the grid location
         this.sprite.setPosition(position.x, position.y);
         this.position = position;
+
+        this.group.add(this.sprite);
 
         this.gridLocation = new Phaser.Geom.Point(gridLocationX, gridLocationY);
     }
@@ -113,6 +118,8 @@ class Tile
         newSprite.setFrame(frame);
         newSprite.setOrigin(0, 0);
         newSprite.setPosition(this.position.x, this.position.y);
+
+        this.group.add(newSprite);
 
         return newSprite;
     }
