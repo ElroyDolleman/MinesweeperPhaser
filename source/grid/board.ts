@@ -307,7 +307,7 @@ class Board
         return this.getTile(tile.gridLocation.x + nextX, tile.gridLocation.y + nextY);
     }
 
-    getAllAdjacentTiles(tile: Tile): Array<Tile>
+    getAllAdjacentTiles(tile: Tile, ignoreRevealed: boolean = false): Array<Tile>
     {
         var adjacentTiles = [];
 
@@ -322,7 +322,7 @@ class Board
 
                 // Add the adjacent tile to the list if it's not undefined
                 var adjacent = this.getAdjacentTile(tile, x, y);
-                if (adjacent != undefined) 
+                if (adjacent != undefined && (!ignoreRevealed || !adjacent.isRevealed)) 
                 {                    
                     adjacentTiles.push(adjacent);
                 }
@@ -330,6 +330,26 @@ class Board
         }
 
         return adjacentTiles;
+    }
+
+    getAllUnrevealed(ignoreMarked: boolean = false): Array<Tile>
+    {
+        var unrevealed = [];
+
+        for (var y = 0; y < this.gridSize.y; y++)
+        {
+            for (var x = 0; x < this.gridSize.x; x++)
+            {
+                let tile = this.getTile(x, y);
+
+                if (!tile.isRevealed && (!tile.isMarked || ignoreMarked))
+                {
+                    unrevealed.push(tile);
+                }
+            }
+        }
+
+        return unrevealed;
     }
 
     showAllMines()

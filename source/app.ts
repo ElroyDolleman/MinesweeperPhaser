@@ -8,8 +8,9 @@ const MAX_TIME: number = 999;
 const MAX_BOARD_ROWS: number = 9;
 const BOARD_WIDTH: number = (MAX_BOARD_ROWS * CELL_SIZE);
 const BOARD_POSITION_X: number = SCREEN_WIDTH / 2 - BOARD_WIDTH / 2;
-
 const BOARD_DEPTH: number = -2;
+
+const FIXED_TIMESTEP = 1000 / 60;
 
 // The amount of time the touch needs to be held down to mark a tile instead of revealing it in miliseconds
 const HOLD_TIME_TO_MARK: number = 300;
@@ -29,6 +30,9 @@ enum GameStates
 
 class GameScene extends Phaser.Scene
 {
+    botPlayer: Bot;
+    botIsPlaying: boolean = false;
+
     board: Board;
     uiManager: UIManager;
 
@@ -52,10 +56,12 @@ class GameScene extends Phaser.Scene
 
     preload()
     {
-        // Load the spritesheet that contains all images
         this.load.spritesheet('minesweeper_sheet', 'assets/minesweeper_sheet.png', { frameWidth: CELL_SIZE, frameHeight: CELL_SIZE });
         this.load.spritesheet('timer_font_sheet', 'assets/timer_font_sheet.png', { frameWidth: TIMER_FONT_WIDTH, frameHeight: TIMER_FONT_HEIGHT });
         this.load.image('ui', 'assets/ui_sheet.png');
+
+        // Button for turning on the bot
+        this.load.spritesheet('bot_button', 'assets/bot_button.png', { frameWidth: BOT_BUTTON_SIZE, frameHeight: BOT_BUTTON_SIZE });
     }
 
     reset()
@@ -84,6 +90,28 @@ class GameScene extends Phaser.Scene
         this.board = new Board();
 
         this.createUI();
+    }
+
+    createBot()
+    {
+        // Create the bot if it doesn't exists yet
+        if (this.botPlayer == null) 
+        {
+            this.botPlayer = new Bot(this.board);
+
+            // Reference to self for callback events
+            let scene = this;
+
+            this.botPlayer.revealActionCallback = function(gridPos: Phaser.Geom.Point) {
+                scene.revealAction(gridPos);
+            }
+            this.botPlayer.markActionCallback = function(gridPos: Phaser.Geom.Point) {
+                scene.markAction(gridPos);
+            }
+        }
+
+        this.botIsPlaying = true;
+        this.timerIsRunning = true;
     }
 
     createUI()
@@ -131,6 +159,12 @@ class GameScene extends Phaser.Scene
         this.disableHeldDown = true;
 
         this.changeState(GameStates.Game);
+
+        // Create the bot if it's toggled on
+        if (this.uiManager.menu.botIsOn) this.createBot();
+
+        // Make sure the bot stops playing
+        else this.botIsPlaying = false;
     }
 
     revealAction(tileLocationToReveal: Phaser.Geom.Point)
@@ -189,7 +223,7 @@ class GameScene extends Phaser.Scene
                 // If there was no new tile selected, count how long the current tile was held down
                 if (!newTileWasSelected)
                 {
-                    this.touchDownTime += 1000 / 60;
+                    this.touchDownTime += FIXED_TIMESTEP;
                     
                     if (this.touchDownTime >= HOLD_TIME_TO_MARK)
                     {
@@ -206,6 +240,13 @@ class GameScene extends Phaser.Scene
                 // Reset the timer whenever a different tile is selected
                 else this.touchDownTime = 0;
             }
+
+            // Testing the bot
+            // if (this.input.activePointer.middleButtonDown())
+            // {
+            //     this.botPlayer.nextStep();
+            //     this.disableHeldDown = true;
+            // }
         }
         else if (this.input.activePointer.justUp)
         {
@@ -255,16 +296,21 @@ class GameScene extends Phaser.Scene
 
     updateGame()
     {
-        this.boardInputUpdate();
+        // Check whether the input needs to be updated or the bot
+        if (!this.botIsPlaying)
+        {
+            this.boardInputUpdate();
+        }
+        else if (this.board.isInteractive)
+        {
+            this.botPlayer.update();
+        }
 
         // Stop the update if the game ended
         if (this.gameEnded) return;
 
-        // Fixed timestep
-        var elapsedMiliseconds = 1000 / 60;
-
         // Update the board (for autorevealing)
-        this.board.update(elapsedMiliseconds);
+        this.board.update(FIXED_TIMESTEP);
 
         if (this.board.allSafeTilesAreRevealed)
         {
@@ -281,10 +327,10 @@ class GameScene extends Phaser.Scene
         else if (this.timerIsRunning && this.secondsPassed < MAX_TIME)
         {
             // When the next second has passed, update it in the HUD
-            this.timer += elapsedMiliseconds;
-            if (this.timer > (this.secondsPassed + 1) * 1000)
+            this.timer += FIXED_TIMESTEP;
+            if (this.timer > (this.secondsPassed += 1) * 1000)
             {
-                this.uiManager.hud.updateTime(this.secondsPassed++);
+                this.uiManager.hud.updateTime(this.secondsPassed);
             }
         }
     }

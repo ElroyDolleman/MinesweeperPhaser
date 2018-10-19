@@ -1,4 +1,5 @@
 const RESTART_BUTTON_SIZE = 100;
+const BOT_BUTTON_SIZE = 100;
 const BUTTON_WIDTH = 250;
 const BUTTON_HEIGHT = 80;
 const BUTTON_TEXTURE_POS_Y = 150;
@@ -9,6 +10,9 @@ class Menu
     resetButtonSprite: Phaser.GameObjects.Sprite;
     rectangle: Phaser.GameObjects.Rectangle;
 
+    botButton: Phaser.GameObjects.Sprite;
+    botIsOn: boolean = false;
+
     mainMenuButtons: Array<Phaser.GameObjects.Sprite>;
 
     constructor(scene: Phaser.Scene)
@@ -18,6 +22,22 @@ class Menu
         this.resetButtonSprite.setSizeToFrame(this.resetButtonSprite.frame);
         this.resetButtonSprite.setOrigin(0, 0);
         this.resetButtonSprite.setVisible(false);
+
+        this.botButton = scene.add.sprite(BOARD_POSITION_X, this.resetButtonSprite.getTopLeft().y, 'bot_button');
+        this.botButton.setOrigin(0, 0);
+
+        // Button event for the bot toggle
+        this.botButton.setInteractive();
+        var ref = this;
+        this.botButton.on('pointerup', function() {
+            ref.botIsOn = !ref.botIsOn;
+
+            if (ref.botIsOn)
+            {
+                ref.botButton.setFrame(1);
+            }
+            else ref.botButton.setFrame(0);
+        });
 
         this.rectangle = scene.add.rectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0.5)
         this.rectangle.setOrigin(0, 0);
@@ -61,6 +81,7 @@ class Menu
     showMainMenu()
     {
         this.rectangle.setVisible(true);
+        this.botButton.setVisible(true);
 
         this.mainMenuButtons.forEach(button => {
             button.setVisible(true);
@@ -72,6 +93,7 @@ class Menu
     hideMainMenu()
     {
         this.rectangle.setVisible(false);
+        this.botButton.setVisible(false);
 
         this.mainMenuButtons.forEach(button => {
             button.setVisible(false);
