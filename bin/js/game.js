@@ -21,6 +21,7 @@ var MAX_BOARD_ROWS = 9;
 var BOARD_WIDTH = (MAX_BOARD_ROWS * CELL_SIZE);
 var BOARD_POSITION_X = SCREEN_WIDTH / 2 - BOARD_WIDTH / 2;
 var BOARD_DEPTH = -2;
+var FIXED_TIMESTEP = 1000 / 60;
 // The amount of time the touch needs to be held down to mark a tile instead of revealing it in miliseconds
 var HOLD_TIME_TO_MARK = 300;
 var InputActions;
@@ -38,6 +39,7 @@ var GameScene = /** @class */ (function (_super) {
     __extends(GameScene, _super);
     function GameScene() {
         var _this = _super.call(this, { key: 'GameScene', active: true }) || this;
+        _this.botIsPlaying = false;
         _this.timer = 0;
         _this.secondsPassed = 0;
         _this.timerIsRunning = false;
@@ -55,10 +57,11 @@ var GameScene = /** @class */ (function (_super) {
     });
     ;
     GameScene.prototype.preload = function () {
-        // Load the spritesheet that contains all images
         this.load.spritesheet('minesweeper_sheet', 'assets/minesweeper_sheet.png', { frameWidth: CELL_SIZE, frameHeight: CELL_SIZE });
         this.load.spritesheet('timer_font_sheet', 'assets/timer_font_sheet.png', { frameWidth: TIMER_FONT_WIDTH, frameHeight: TIMER_FONT_HEIGHT });
         this.load.image('ui', 'assets/ui_sheet.png');
+        // Button for turning on the bot
+        this.load.spritesheet('bot_button', 'assets/bot_button.png', { frameWidth: BOT_BUTTON_SIZE, frameHeight: BOT_BUTTON_SIZE });
     };
     GameScene.prototype.reset = function () {
         this.timer = 0;
@@ -77,6 +80,22 @@ var GameScene = /** @class */ (function (_super) {
         this.resize();
         this.board = new Board();
         this.createUI();
+    };
+    GameScene.prototype.createBot = function () {
+        // Create the bot if it doesn't exists yet
+        if (this.botPlayer == null) {
+            this.botPlayer = new Bot(this.board);
+            // Reference to self for callback events
+            var scene_1 = this;
+            this.botPlayer.revealActionCallback = function (gridPos) {
+                scene_1.revealAction(gridPos);
+            };
+            this.botPlayer.markActionCallback = function (gridPos) {
+                scene_1.markAction(gridPos);
+            };
+        }
+        this.botIsPlaying = true;
+        this.timerIsRunning = true;
     };
     GameScene.prototype.createUI = function () {
         // Initialize the UI Manager
@@ -111,6 +130,12 @@ var GameScene = /** @class */ (function (_super) {
         // Make sure the button click won't reveal a spot on the grid immediately
         this.disableHeldDown = true;
         this.changeState(GameStates.Game);
+        // Create the bot if it's toggled on
+        if (this.uiManager.menu.botIsOn)
+            this.createBot();
+        // Make sure the bot stops playing
+        else
+            this.botIsPlaying = false;
     };
     GameScene.prototype.revealAction = function (tileLocationToReveal) {
         // Reveal the tile that was clicked
@@ -152,7 +177,7 @@ var GameScene = /** @class */ (function (_super) {
             if (this.input.activePointer.wasTouch) {
                 // If there was no new tile selected, count how long the current tile was held down
                 if (!newTileWasSelected) {
-                    this.touchDownTime += 1000 / 60;
+                    this.touchDownTime += FIXED_TIMESTEP;
                     if (this.touchDownTime >= HOLD_TIME_TO_MARK) {
                         this.touchDownTime = 0;
                         this.board.unselectCurrentTile();
@@ -166,6 +191,12 @@ var GameScene = /** @class */ (function (_super) {
                 else
                     this.touchDownTime = 0;
             }
+            // Testing the bot
+            // if (this.input.activePointer.middleButtonDown())
+            // {
+            //     this.botPlayer.nextStep();
+            //     this.disableHeldDown = true;
+            // }
         }
         else if (this.input.activePointer.justUp) {
             // Unselect the currently selected tile
@@ -200,14 +231,18 @@ var GameScene = /** @class */ (function (_super) {
             this.updateGame();
     };
     GameScene.prototype.updateGame = function () {
-        this.boardInputUpdate();
+        // Check whether the input needs to be updated or the bot
+        if (!this.botIsPlaying) {
+            this.boardInputUpdate();
+        }
+        else if (this.board.isInteractive) {
+            this.botPlayer.update();
+        }
         // Stop the update if the game ended
         if (this.gameEnded)
             return;
-        // Fixed timestep
-        var elapsedMiliseconds = 1000 / 60;
         // Update the board (for autorevealing)
-        this.board.update(elapsedMiliseconds);
+        this.board.update(FIXED_TIMESTEP);
         if (this.board.allSafeTilesAreRevealed) {
             // Show the player where all the mines are by marking them
             this.board.markAllMines();
@@ -219,9 +254,9 @@ var GameScene = /** @class */ (function (_super) {
         }
         else if (this.timerIsRunning && this.secondsPassed < MAX_TIME) {
             // When the next second has passed, update it in the HUD
-            this.timer += elapsedMiliseconds;
-            if (this.timer > (this.secondsPassed + 1) * 1000) {
-                this.uiManager.hud.updateTime(this.secondsPassed++);
+            this.timer += FIXED_TIMESTEP;
+            if (this.timer > (this.secondsPassed += 1) * 1000) {
+                this.uiManager.hud.updateTime(this.secondsPassed);
             }
         }
     };
@@ -274,6 +309,147 @@ var config = {
     scene: [GameScene]
 };
 var game = new Phaser.Game(config);
+var BOT_MOVE_INTERVAL = 600;
+var Bot = /** @class */ (function () {
+    function Bot(board) {
+        this.step = 0;
+        this.currentStepSucces = true;
+        this.tilesToMark = [];
+        this.tilesToReveal = [];
+        this.timer = 0;
+        this.board = board;
+    }
+    Bot.prototype.update = function () {
+        this.timer += FIXED_TIMESTEP;
+        // Stop the update if it's not ready to perform the next action
+        if (this.timer < BOT_MOVE_INTERVAL) {
+            return;
+        }
+        this.timer -= BOT_MOVE_INTERVAL;
+        // Reveal the next tile if there are any to reveal
+        if (this.tilesToReveal.length > 0) {
+            this.revealActionCallback(this.tilesToReveal[0].gridLocation);
+            this.tilesToReveal.splice(0, 1);
+        }
+        // Mark the next tile if there are any to mark
+        else if (this.tilesToMark.length > 0) {
+            this.markActionCallback(this.tilesToMark[0].gridLocation);
+            this.tilesToMark.splice(0, 1);
+        }
+        // Perform the next step if there is nothing to reveal or mark
+        else {
+            this.nextStep();
+        }
+    };
+    Bot.prototype.nextStep = function () {
+        this.step++;
+        // When all the mines are marked, reveal the remaining tiles
+        if ((this.board.minesAmount - this.board.markedAmount) == 0) {
+            this.tilesToReveal = this.board.getAllUnrevealed();
+            return;
+        }
+        switch (this.step) {
+            case 1:
+                this.revealRandom();
+                this.currentStepSucces = true;
+                break;
+            case 2:
+                this.currentStepSucces = this.markAllCertainMines();
+                break;
+            case 3:
+                this.currentStepSucces = this.revealAllCertainSafeTiles();
+                break;
+        }
+        // Immediately go the next step if this step was not succesful
+        if (!this.currentStepSucces) {
+            // Go back to the first step if the last step was completed
+            if (this.step == 3)
+                this.step = 0;
+            this.nextStep();
+        }
+        else if (this.step >= 3) {
+            // Go back to the second step if the last step was succesfull since the first step is luck based
+            this.step = 1;
+        }
+    };
+    // Randomly reveal a tile
+    Bot.prototype.revealRandom = function () {
+        var x = Phaser.Math.RND.integerInRange(0, this.board.gridSize.x - 1);
+        var y = Phaser.Math.RND.integerInRange(0, this.board.gridSize.y - 1);
+        var tile = this.board.getTile(x, y);
+        if (!tile.isRevealed && !tile.isMarked) {
+            this.revealActionCallback(tile.gridLocation);
+        }
+        else {
+            // Brute force until it chooses a tile that is both not marked and not revealed
+            this.revealRandom();
+        }
+    };
+    // Mark evey tile that is 100% sure a mine
+    Bot.prototype.markAllCertainMines = function () {
+        var _this = this;
+        var madeAMove = false;
+        for (var y = 0; y < this.board.gridSize.y; y++) {
+            for (var x = 0; x < this.board.gridSize.x; x++) {
+                var tile = this.board.getTile(x, y);
+                if (tile.isRevealed && tile.hintValue > 0) {
+                    // Get all adjacent tiles that are not revealed yet
+                    var adjacentTiles = this.board.getAllAdjacentTiles(tile, true);
+                    // Continue the for loop if the hint value is different than the surrounding unrevealed tiles
+                    if (adjacentTiles.length != tile.hintValue)
+                        continue;
+                    // Reveal the tiles
+                    adjacentTiles.forEach(function (adjacent) {
+                        if (!adjacent.isMarked && _this.tilesToMark.indexOf(adjacent) < 0) {
+                            madeAMove = true;
+                            _this.tilesToMark.push(adjacent);
+                        }
+                    });
+                }
+            }
+        }
+        return madeAMove;
+    };
+    Bot.prototype.revealAllCertainSafeTiles = function () {
+        var _this = this;
+        var madeAMove = false;
+        for (var y = 0; y < this.board.gridSize.y; y++) {
+            var _loop_1 = function () {
+                var tile = this_1.board.getTile(x, y);
+                if (tile.isRevealed && tile.hintValue > 0) {
+                    // Get all adjacent tiles that are not revealed yet
+                    var adjacentTiles = this_1.board.getAllAdjacentTiles(tile, true);
+                    // Count how many tiles are marked
+                    var markedAmount_1 = 0;
+                    adjacentTiles.forEach(function (adjacent) {
+                        if (adjacent.isMarked) {
+                            markedAmount_1++;
+                        }
+                    });
+                    // Continue the for loop if all unrevealed tiles are marked already
+                    if (adjacentTiles.length == markedAmount_1)
+                        return "continue";
+                    // Continue the loop if it's not certain whether there is a mine or not
+                    if (tile.hintValue != markedAmount_1)
+                        return "continue";
+                    // Reveal all tiles that are not marked
+                    adjacentTiles.forEach(function (adjacent) {
+                        if (!adjacent.isMarked && _this.tilesToReveal.indexOf(adjacent) < 0) {
+                            madeAMove = true;
+                            _this.tilesToReveal.push(adjacent);
+                        }
+                    });
+                }
+            };
+            var this_1 = this;
+            for (var x = 0; x < this.board.gridSize.x; x++) {
+                _loop_1();
+            }
+        }
+        return madeAMove;
+    };
+    return Bot;
+}());
 var BoardStates;
 (function (BoardStates) {
     BoardStates[BoardStates["Active"] = 0] = "Active";
@@ -501,7 +677,8 @@ var Board = /** @class */ (function () {
     Board.prototype.getAdjacentTile = function (tile, nextX, nextY) {
         return this.getTile(tile.gridLocation.x + nextX, tile.gridLocation.y + nextY);
     };
-    Board.prototype.getAllAdjacentTiles = function (tile) {
+    Board.prototype.getAllAdjacentTiles = function (tile, ignoreRevealed) {
+        if (ignoreRevealed === void 0) { ignoreRevealed = false; }
         var adjacentTiles = [];
         for (var y = -1; y <= 1; y++) {
             for (var x = -1; x <= 1; x++) {
@@ -511,12 +688,25 @@ var Board = /** @class */ (function () {
                 }
                 // Add the adjacent tile to the list if it's not undefined
                 var adjacent = this.getAdjacentTile(tile, x, y);
-                if (adjacent != undefined) {
+                if (adjacent != undefined && (!ignoreRevealed || !adjacent.isRevealed)) {
                     adjacentTiles.push(adjacent);
                 }
             }
         }
         return adjacentTiles;
+    };
+    Board.prototype.getAllUnrevealed = function (ignoreMarked) {
+        if (ignoreMarked === void 0) { ignoreMarked = false; }
+        var unrevealed = [];
+        for (var y = 0; y < this.gridSize.y; y++) {
+            for (var x = 0; x < this.gridSize.x; x++) {
+                var tile = this.getTile(x, y);
+                if (!tile.isRevealed && (!tile.isMarked || ignoreMarked)) {
+                    unrevealed.push(tile);
+                }
+            }
+        }
+        return unrevealed;
     };
     Board.prototype.showAllMines = function () {
         for (var y = 0; y < this.gridSize.y; y++) {
@@ -795,17 +985,32 @@ var HUD = /** @class */ (function () {
     return HUD;
 }());
 var RESTART_BUTTON_SIZE = 100;
+var BOT_BUTTON_SIZE = 100;
 var BUTTON_WIDTH = 250;
 var BUTTON_HEIGHT = 80;
 var BUTTON_TEXTURE_POS_Y = 150;
 var BUTTON_MARGIN = 4;
 var Menu = /** @class */ (function () {
     function Menu(scene) {
+        this.botIsOn = false;
         this.resetButtonSprite = scene.add.sprite(SCREEN_WIDTH - BOARD_POSITION_X - RESTART_BUTTON_SIZE, SCREEN_HEIGHT - RESTART_BUTTON_SIZE - BOARD_POSITION_X, 'ui');
         this.resetButtonSprite.frame = new Phaser.Textures.Frame(this.resetButtonSprite.texture, 'resetbutton', 0, 0, 50, RESTART_BUTTON_SIZE, RESTART_BUTTON_SIZE);
         this.resetButtonSprite.setSizeToFrame(this.resetButtonSprite.frame);
         this.resetButtonSprite.setOrigin(0, 0);
         this.resetButtonSprite.setVisible(false);
+        this.botButton = scene.add.sprite(BOARD_POSITION_X, this.resetButtonSprite.getTopLeft().y, 'bot_button');
+        this.botButton.setOrigin(0, 0);
+        // Button event for the bot toggle
+        this.botButton.setInteractive();
+        var ref = this;
+        this.botButton.on('pointerup', function () {
+            ref.botIsOn = !ref.botIsOn;
+            if (ref.botIsOn) {
+                ref.botButton.setFrame(1);
+            }
+            else
+                ref.botButton.setFrame(0);
+        });
         this.rectangle = scene.add.rectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0.5);
         this.rectangle.setOrigin(0, 0);
         this.mainMenuButtons = [];
@@ -834,6 +1039,7 @@ var Menu = /** @class */ (function () {
     };
     Menu.prototype.showMainMenu = function () {
         this.rectangle.setVisible(true);
+        this.botButton.setVisible(true);
         this.mainMenuButtons.forEach(function (button) {
             button.setVisible(true);
         });
@@ -841,6 +1047,7 @@ var Menu = /** @class */ (function () {
     };
     Menu.prototype.hideMainMenu = function () {
         this.rectangle.setVisible(false);
+        this.botButton.setVisible(false);
         this.mainMenuButtons.forEach(function (button) {
             button.setVisible(false);
         });
