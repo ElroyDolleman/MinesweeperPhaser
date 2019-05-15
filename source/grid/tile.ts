@@ -1,3 +1,4 @@
+// The numbers are corresponding to the sprite index of the spritesheet
 enum TileFrames
 {
     Hidden = 10,
